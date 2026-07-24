@@ -4,6 +4,7 @@ const path = require('path');
 const Identity = require('./contactIdentity');
 const Persistence = require('./persistence');
 const { env } = require('../config/env');
+const { isTesterIdentity } = require('../core/testCommandAccess');
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const HUMAN_CONTROL_PATH = path.join(DATA_DIR, 'human-control.json');
@@ -86,6 +87,13 @@ function purgeExpiredBlocks({ write = true } = {}) {
 function getBlock(clientId) {
   const id = normalizeClientId(clientId);
   if (!id) return { blocked: false, control: null };
+  if (isTesterIdentity({ from: clientId })) {
+    if (state.blocks[id]) {
+      delete state.blocks[id];
+      persist();
+    }
+    return { blocked: false, control: null, testerBypass: true };
+  }
   const normalized = normalizeBlock(state.blocks[id]);
   if (!normalized) {
     if (state.blocks[id]) {
@@ -101,6 +109,13 @@ function getBlock(clientId) {
 function setBlock(clientId, payload = {}) {
   const id = normalizeClientId(clientId);
   if (!id) return null;
+  if (isTesterIdentity({ from: clientId })) {
+    if (state.blocks[id]) {
+      delete state.blocks[id];
+      persist();
+    }
+    return null;
+  }
 
   const blockedAt = payload.blockedAt || nowIso();
   const blockedUntil = payload.persistent
@@ -128,8 +143,10 @@ function clearBlock(clientId) {
 }
 
 function resetAll() {
+  const previousCount = Object.keys(state.blocks || {}).length;
   state.blocks = {};
   persist();
+  return previousCount;
 }
 
 purgeExpiredBlocks({ write: false });

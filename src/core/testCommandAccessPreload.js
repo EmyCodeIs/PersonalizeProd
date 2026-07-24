@@ -4,6 +4,7 @@ const WppClient = require('../services/wppconnectClient');
 const { env } = require('../config/env');
 const { isInternalTestCommand, firstLine } = require('./resetCommandHandoffPreload');
 const { isTestCommandAuthorized } = require('./testCommandAccess');
+const { isSystemResetCommand } = require('./systemReset');
 
 function extractText(payload = {}) {
   return String(
@@ -29,7 +30,7 @@ function installTestCommandAccessGuard() {
       }
 
       const command = firstLine(text).toLowerCase();
-      if (!env.enableTestCommands) {
+      if (!env.enableTestCommands && !isSystemResetCommand(command)) {
         console.warn(`[COMANDO TESTE] ignorado porque ENABLE_TEST_COMMANDS=false | comando=${command}`);
         return undefined;
       }

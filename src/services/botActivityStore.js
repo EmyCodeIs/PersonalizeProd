@@ -127,6 +127,17 @@ function resetAll() {
   persist();
 }
 
+function resetContact(clientId) {
+  let removed = 0;
+  for (const key of candidateKeys(clientId)) {
+    if (!state.contacts[key]) continue;
+    delete state.contacts[key];
+    removed += 1;
+  }
+  if (removed) persist();
+  return removed;
+}
+
 purgeExpired({ write: false });
 
 if (!global.__personalizeBotActivityMaintenanceTimer) {
@@ -144,6 +155,7 @@ module.exports = {
   markBotOutbound,
   getLastBotOutbound,
   purgeExpired,
+  resetContact,
   resetAll,
   _test: {
     candidateKeys,

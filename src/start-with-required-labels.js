@@ -59,10 +59,6 @@ require('./core/resetCommandHandoffPreload');
 // Mantém os comandos ativos somente para os números/IDs administrativos
 // configurados separadamente da whitelist geral de atendimento.
 require('./core/testCommandAccessPreload');
-require('./core/resetCleanupPreload');
-// Substitui a limpeza ampla antiga por uma limpeza que remove somente as
-// etiquetas gerenciadas, preservando as etiquetas manuais do contato.
-require('./core/safeResetCleanupOverridePreload');
 require('./core/customerFlowFixPreload');
 require('./core/preferredSellerNotePreload');
 require('./core/completedFlowSilencePreload');

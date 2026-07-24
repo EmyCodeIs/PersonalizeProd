@@ -220,91 +220,9 @@ async function runLabelStartupOnce(channel) {
   }
 }
 
-async function clearContactForSystemReset(channel, clientId) {
-  const chatId = String(clientId || '').trim();
-  const result = { noteCleared: false, labelsRemoved: 0, errors: [] };
-
-  try {
-    result.noteCleared = await channel.setContactNote(chatId, '') === true;
-  } catch (error) {
-    result.errors.push(`nota:${error?.message || error}`);
-  }
-
-  const client = channel?.client;
-  if (!client?.page?.evaluate || !chatId) {
-    result.errors.push('etiquetas:LABEL_PAGE_UNAVAILABLE');
-    return result;
-  }
-
-  try {
-    const labelResult = await client.page.evaluate(async ({ chatId }) => {
-      const WPP = window.WPP || null;
-      const Store = window.Store || null;
-      const labelStore = Store?.Label || Store?.Labels || null;
-      const getId = (item) => String(item?.id?._serialized || item?.id || item?.labelId || item || '');
-
-      let chat = Store?.Chat?.get?.(chatId) || null;
-      if (!chat && typeof Store?.Chat?.find === 'function') chat = await Store.Chat.find(chatId);
-      if (!chat) return { removed: 0, error: 'CHAT_NOT_FOUND' };
-      if (typeof labelStore?.getLabelsForModel !== 'function') return { removed: 0, error: 'LABEL_STORE_UNAVAILABLE' };
-
-      const beforeRaw = labelStore.getLabelsForModel(chat) || [];
-      const before = Array.isArray(beforeRaw) ? beforeRaw : Object.values(beforeRaw || {});
-      const ids = [...new Set(before.map(getId).filter(Boolean))];
-      if (!ids.length) return { removed: 0, requested: 0 };
-
-      if (typeof WPP?.labels?.addOrRemoveLabels === 'function') {
-        await WPP.labels.addOrRemoveLabels(
-          [chatId],
-          ids.map((id) => ({ labelId: id, type: 'remove' })),
-        );
-      } else if (typeof WPP?.lists?.removeChats === 'function') {
-        for (const id of ids) await WPP.lists.removeChats(id, [chatId]);
-      } else {
-        return { removed: 0, requested: ids.length, error: 'REMOVE_LABEL_API_UNAVAILABLE' };
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      const afterRaw = labelStore.getLabelsForModel(chat) || [];
-      const after = Array.isArray(afterRaw) ? afterRaw : Object.values(afterRaw || {});
-      const remaining = new Set(after.map(getId).filter(Boolean));
-      const removed = ids.filter((id) => !remaining.has(id)).length;
-      return { removed, requested: ids.length, remaining: remaining.size };
-    }, { chatId });
-
-    result.labelsRemoved = Number(labelResult?.removed || 0);
-    if (labelResult?.error) result.errors.push(`etiquetas:${labelResult.error}`);
-    console.log(
-      `[RESETARSYS] limpeza do contato | chat=${chatId} | nota=${result.noteCleared ? 'apagada' : 'não confirmada'} `
-      + `| etiquetasRemovidas=${result.labelsRemoved} | erros=${result.errors.join(' | ') || '-'}`,
-    );
-  } catch (error) {
-    result.errors.push(`etiquetas:${error?.message || error}`);
-    console.warn(`[RESETARSYS] falha ao limpar contato ${chatId}:`, error?.stack || error?.message || error);
-  }
-
-  return result;
-}
-
-function installResetCleanup(channel) {
-  if (!channel || typeof channel.sendText !== 'function' || channel.__resetCleanupInstalled) return;
-  const originalSendText = channel.sendText.bind(channel);
-
-  channel.sendText = async (clientId, text, options = {}) => {
-    const message = String(text || '');
-    if (message.startsWith('Sistema resetado para teste.')) {
-      await clearContactForSystemReset(channel, clientId);
-    }
-    return originalSendText(clientId, text, options);
-  };
-
-  channel.__resetCleanupInstalled = true;
-}
-
 const originalCreateWppChannel = WppClient.createWppChannel;
 WppClient.createWppChannel = async function createChannelWithStartupLabelCheck(options = {}) {
   const channel = await originalCreateWppChannel(options);
-  installResetCleanup(channel);
   await runLabelStartupOnce(channel);
   return channel;
 };

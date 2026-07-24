@@ -2,7 +2,6 @@
 
 const ServiceLabels = require('./serviceLabels');
 const Identity = require('../services/contactIdentity');
-const Store = require('../services/leadStore');
 
 const confirmed = new Set();
 const inFlight = new Map();
@@ -40,16 +39,6 @@ function clearServiceLabelCache(clientId = '') {
   }
 }
 
-function installResetCacheCleanup() {
-  if (Store.__serviceLabelCacheResetInstalled || typeof Store.resetSystem !== 'function') return;
-  const originalResetSystem = Store.resetSystem.bind(Store);
-  Store.resetSystem = function resetSystemAndClearServiceLabelCache(...args) {
-    clearServiceLabelCache();
-    return originalResetSystem(...args);
-  };
-  Store.__serviceLabelCacheResetInstalled = true;
-}
-
 function installIdempotentServiceLabels() {
   if (ServiceLabels.__idempotentServiceLabelsInstalled) return ServiceLabels;
 
@@ -83,7 +72,6 @@ function installIdempotentServiceLabels() {
     return task;
   };
 
-  installResetCacheCleanup();
   ServiceLabels.__idempotentServiceLabelsInstalled = true;
   return ServiceLabels;
 }
