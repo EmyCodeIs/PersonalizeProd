@@ -30,6 +30,10 @@ if (duplicateRemovalRequested && !duplicateRemovalConfirmed) {
   );
 }
 
+// Instala a barreira de sincronização antes de qualquer módulo capturar as
+// funções de etiquetas, recuperação ou conexão do WPPConnect.
+require('./core/synchronizationGuardPreload');
+
 const serviceLabels = require('./core/serviceLabels');
 const { ensureRequiredLabelsOnce } = require('./core/requiredLabelsStartup');
 const { installIdempotentServiceLabels } = require('./core/idempotentServiceLabels');
