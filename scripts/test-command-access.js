@@ -55,6 +55,8 @@ try {
   process.env.TEST_COMMAND_ALLOWED_CLIENT_NUMBERS = '';
   process.env.TEST_COMMAND_ALLOWED_CHAT_IDS = '';
   process.env.TEST_COMMAND_LID_NUMBER_MAP = '';
+  delete process.env.ALLOWED_CLIENT_NUMBERS;
+  delete process.env.ALLOWED_CHAT_IDS;
 
   assert.strictEqual(
     isTestCommandAuthorized({ from: '5531971386091@c.us' }).allowed,
@@ -62,9 +64,8 @@ try {
     'sem administradores configurados o padrão deve negar todos',
   );
 
-  delete process.env.TEST_COMMAND_ALLOWED_CLIENT_NUMBERS;
-  delete process.env.TEST_COMMAND_ALLOWED_CHAT_IDS;
-  delete process.env.TEST_COMMAND_LID_NUMBER_MAP;
+  // Este é o caso real do .env: chaves administrativas presentes, porém vazias.
+  // Elas não podem anular a whitelist geral usada pela tester.
   process.env.ALLOWED_CLIENT_NUMBERS = '31971386091';
   process.env.ALLOWED_CHAT_IDS = '18885055098907@lid';
   process.env.LID_NUMBER_MAP = '18885055098907@lid=31971386091';
@@ -72,7 +73,12 @@ try {
   assert.strictEqual(
     isTesterIdentity({ from: '18885055098907@lid' }),
     true,
-    'a whitelist local deve servir como fallback quando não há whitelist administrativa separada',
+    'a whitelist geral deve servir como fallback quando as variáveis administrativas estão vazias',
+  );
+  assert.strictEqual(
+    isTestCommandAuthorized({ from: '5531971386091@c.us' }).allowed,
+    true,
+    'o /resetarsys deve funcionar pelo número permitido mesmo com chaves administrativas vazias',
   );
 
   console.log('✅ Whitelist administrativa dos comandos verificada');
