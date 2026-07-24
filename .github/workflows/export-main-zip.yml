@@ -1,0 +1,39 @@
+name: Export main ZIP
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact main
+        uses: actions/checkout@v4
+        with:
+          ref: fe6ca12df261015fdca9a2df87caa608ac51c944
+          fetch-depth: 1
+
+      - name: Prepare clean VPS source package
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' 'fe6ca12df261015fdca9a2df87caa608ac51c944' > MAIN_COMMIT.txt
+          rm -rf .git node_modules tokens logs storage/auth
+          rm -f .env .env.local .env.production
+          find data -maxdepth 1 -type f \( -name '*.sqlite' -o -name '*.sqlite-*' \) -delete 2>/dev/null || true
+          zip -r /tmp/PersonalizeProd-main-fe6ca12.zip .
+
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalizeProd-main-fe6ca12
+          path: /tmp/PersonalizeProd-main-fe6ca12.zip
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
