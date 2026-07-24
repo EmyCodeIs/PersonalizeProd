@@ -49,6 +49,10 @@ O teste-base de handoff também esperava que etiquetas não exatas retornassem `
 
 A produção não é apenas `customerFlow.js`. Vinte e dois preloads alteram módulos e funções antes do bootstrap. Mudar a ordem pode alterar catálogo, handoff, reset, etiquetas, recuperação, suporte, buffers e confiabilidade. A ordem passou a ser verificada automaticamente.
 
+## 9. Baseline precisa ser multiplataforma
+
+O primeiro teste real no Windows falhou porque o Git converteu arquivos de texto de `LF` para `CRLF`. O conteúdo lógico estava igual, mas o hash bruto mudou. O teste foi corrigido para normalizar somente as quebras de linha dos arquivos de runtime antes do SHA-256. Assets continuam protegidos byte a byte, incluindo tamanho e hash binário.
+
 ## Prioridade sugerida após a Etapa 2
 
 1. Handoff humano seguro.
