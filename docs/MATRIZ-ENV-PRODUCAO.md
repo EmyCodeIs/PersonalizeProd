@@ -103,3 +103,7 @@ BROWSER_MEDIA_CACHE_MB=
 ## Segurança
 
 O `.env` real não deve ser versionado. Chave de dados, senha de backup, senha VNC e senha do painel precisam permanecer apenas na VPS. A chave de criptografia não deve ser trocada sem plano de migração do SQLite existente.
+
+## Validação real no Windows
+
+O `npm ci` instalou 302 pacotes com sucesso em Node.js `v24.16.0`. A primeira execução do baseline revelou somente uma diferença de quebra de linha `LF`/`CRLF`, agora corrigida no teste multiplataforma. Nenhuma divergência de conteúdo do `.env` foi detectada por essa falha.
