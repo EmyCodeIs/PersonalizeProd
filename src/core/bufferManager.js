@@ -46,6 +46,15 @@ class BufferManager {
     if (item?.timer) clearTimeout(item.timer);
     this.map.delete(id);
   }
+
+  clearAll() {
+    const count = this.map.size;
+    for (const item of this.map.values()) {
+      if (item?.timer) clearTimeout(item.timer);
+    }
+    this.map.clear();
+    return count;
+  }
 }
 
 function mergeMessages(messages = []) {

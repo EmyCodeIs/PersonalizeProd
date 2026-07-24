@@ -2,17 +2,6 @@
 
 const Store = require('../services/leadStore');
 
-function firstLine(value) {
-  return String(value || '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean) || '';
-}
-
-function isResetCommand(value) {
-  return /^\/(resetarsys|reset|reiniciar)$/i.test(firstLine(value));
-}
-
 const CustomerFlow = require('../flow/customerFlow');
 const originalProcessCustomerMessage = CustomerFlow.processCustomerMessage;
 
@@ -20,7 +9,7 @@ CustomerFlow.processCustomerMessage = async function processCustomerMessageAfter
   const session = Store.getSession(args.clientId);
   const completed = Boolean(session?.completed || session?.dados?.botDone || session?.etapa === 'concluido');
 
-  if (completed && !isResetCommand(args.text)) {
+  if (completed) {
     console.log(`[FLUXO] pré-atendimento concluído; mensagem deixada para o vendedor | cliente=${args.clientId}`);
     return session;
   }
@@ -29,5 +18,4 @@ CustomerFlow.processCustomerMessage = async function processCustomerMessageAfter
 };
 
 module.exports = {
-  isResetCommand,
 };
