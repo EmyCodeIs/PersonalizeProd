@@ -28,9 +28,23 @@ function parseMap(value) {
 }
 
 function commandAdminConfig() {
+  const explicitAdminConfig = [
+    'TEST_COMMAND_ALLOWED_CLIENT_NUMBERS',
+    'TEST_COMMAND_ALLOWED_CHAT_IDS',
+    'TEST_COMMAND_LID_NUMBER_MAP',
+  ].some((name) => process.env[name] !== undefined);
+
   return {
-    allowedNumbers: splitList(process.env.TEST_COMMAND_ALLOWED_CLIENT_NUMBERS),
-    allowedChatIds: splitList(process.env.TEST_COMMAND_ALLOWED_CHAT_IDS),
+    allowedNumbers: splitList(
+      explicitAdminConfig
+        ? process.env.TEST_COMMAND_ALLOWED_CLIENT_NUMBERS
+        : process.env.ALLOWED_CLIENT_NUMBERS,
+    ),
+    allowedChatIds: splitList(
+      explicitAdminConfig
+        ? process.env.TEST_COMMAND_ALLOWED_CHAT_IDS
+        : process.env.ALLOWED_CHAT_IDS,
+    ),
     lidMap: {
       ...parseMap(process.env.LID_NUMBER_MAP),
       ...parseMap(process.env.TEST_COMMAND_LID_NUMBER_MAP),
@@ -106,9 +120,14 @@ function isTestCommandAuthorized({ from, raw } = {}) {
   };
 }
 
+function isTesterIdentity({ from, raw } = {}) {
+  return isTestCommandAuthorized({ from, raw }).allowed;
+}
+
 module.exports = {
   collectCandidates,
   commandAdminConfig,
+  isTesterIdentity,
   isTestCommandAuthorized,
   lastDigits,
   onlyDigits,

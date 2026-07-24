@@ -9,7 +9,7 @@ const { clearServiceLabelCache } = require('./idempotentServiceLabels');
 const { isTestCommandAuthorized } = require('./testCommandAccess');
 
 const SYSTEM_RESET_COMMAND = '/resetarsys';
-const SYSTEM_RESET_RESPONSE_TITLE = 'Sistema resetado para teste.';
+const SYSTEM_RESET_RESPONSE_TITLE = 'Conversa zerada para teste.';
 const RECOVERY_SOURCES = new Set(['history-recovery', 'unread-bootstrap', 'startup-recovery']);
 const processedCommandIds = new Set();
 let activeReset = null;
@@ -59,11 +59,14 @@ function isHistoricalCommand({ raw = {}, source = 'event', now = Date.now() } = 
 }
 
 function normalizeChatId(value) {
-  const raw = String(value || '').trim().toLowerCase();
+  const serialized = value && typeof value === 'object'
+    ? (value._serialized || value.id?._serialized || value.id || '')
+    : value;
+  const raw = String(serialized || '').trim().toLowerCase();
   if (!raw) return '';
   if (/@(c\.us|g\.us|lid)$/i.test(raw)) return raw;
   const digits = raw.replace(/\D/g, '');
-  return digits ? `${digits}@c.us` : raw;
+  return digits ? `${digits}@c.us` : '';
 }
 
 function normalizePhone(value) {
@@ -326,11 +329,10 @@ function formatResponse({ internal, contact, runtime }) {
     SYSTEM_RESET_RESPONSE_TITLE,
     '',
     `Resultado: ${status}`,
-    `Sessões apagadas: ${internal.previousSessionCount}`,
-    `Perfis apagados: ${internal.previousProfileCount}`,
-    `Leads apagados: ${internal.previousLeadCount}`,
-    `Identidades apagadas: ${internal.previousIdentityCount}`,
+    `Sessão apagada: ${internal.sessionRemoved ? 'sim' : 'já estava vazia'}`,
+    `Perfil apagado: ${internal.profileRemoved ? 'sim' : 'já estava vazio'}`,
     `Handoffs apagados: ${runtime.handoffsCleared}`,
+    `Checkpoints apagados: ${runtime.botActivityCleared}`,
     `Buffers descartados: ${runtime.buffersCleared}`,
     `Tarefas canceladas: ${runtime.queuedCancelled}`,
     `Envios pendentes descartados: ${runtime.outboundCleared}`,
@@ -339,7 +341,7 @@ function formatResponse({ internal, contact, runtime }) {
     `Etiquetas restantes: ${contact.labels.remaining ?? 'não confirmado'}`,
     ...(failures.length ? ['', `Falhas: ${failures.join(' | ')}`] : []),
     '',
-    'Me envie uma nova mensagem para começar como primeiro contato.',
+    'Sua próxima mensagem começará um atendimento do zero.',
   ].join('\n');
 }
 
@@ -353,11 +355,6 @@ async function executeSystemReset({
   processedMessageIds = null,
   repairedServiceLabels = null,
 } = {}) {
-  if (!env.enableTestCommands) {
-    logReset('ignorado', { chat: clientId, motivo: 'ENABLE_TEST_COMMANDS=false' }, 'warn');
-    return { handled: true, executed: false, reason: 'disabled' };
-  }
-
   const access = isTestCommandAuthorized({ from: clientId, raw });
   if (!access.allowed) {
     logReset('negado', { chat: clientId, motivo: access.reason }, 'warn');
@@ -402,6 +399,7 @@ async function executeSystemReset({
       queuedCancelled: 0,
       outboundCleared: 0,
       handoffsCleared: 0,
+      botActivityCleared: 0,
       idle: true,
     };
 
@@ -412,24 +410,35 @@ async function executeSystemReset({
       aliases: candidates.length,
     });
 
-    taskQueue?.pause?.();
-    runtime.buffersCleared = Number(buffer?.clearAll?.() || 0);
-    runtime.queuedCancelled = Number(taskQueue?.cancelAllQueued?.('SYSTEM_RESET') || 0);
-    runtime.outboundCleared = Number(channel?.outboundTracker?.clearAll?.() || 0);
-    runtime.idle = typeof taskQueue?.waitForIdle === 'function'
-      ? await taskQueue.waitForIdle({ timeoutMs: 15000 })
+    for (const candidate of candidates) {
+      runtime.buffersCleared += buffer?.clear?.(candidate) ? 1 : 0;
+    }
+    runtime.queuedCancelled = Number(
+      taskQueue?.cancelQueuedForChats?.(candidates, 'SYSTEM_RESET') || 0,
+    );
+    runtime.outboundCleared = Number(
+      channel?.outboundTracker?.clearChats?.(candidates) || 0,
+    );
+    runtime.idle = typeof taskQueue?.waitForChatsIdle === 'function'
+      ? await taskQueue.waitForChatsIdle(candidates, { timeoutMs: 15000 })
       : true;
 
     const contact = await clearContact(channel, clientId, candidates);
-    const internal = Store.resetSystem();
+    const internal = Store.resetConversation(clientId);
 
+    for (const candidate of candidates) {
+      try {
+        runtime.handoffsCleared += HumanControl.clearBlock(candidate) ? 1 : 0;
+      } catch (_) {}
+    }
+    try { runtime.botActivityCleared = Number(BotActivity.resetContact(clientId) || 0); } catch (_) {}
+    try { clearServiceLabelCache(clientId); } catch (_) {}
     try {
-      runtime.handoffsCleared = Number(HumanControl.resetAll() || 0);
+      const prefix = `${Store.normalizeClientId(clientId)}:`;
+      for (const key of repairedServiceLabels || []) {
+        if (String(key).startsWith(prefix)) repairedServiceLabels.delete(key);
+      }
     } catch (_) {}
-    try { BotActivity.resetAll(); } catch (_) {}
-    try { clearServiceLabelCache(); } catch (_) {}
-    try { processedMessageIds?.clear?.(); } catch (_) {}
-    try { repairedServiceLabels?.clear?.(); } catch (_) {}
 
     logReset(contact.note.cleared ? 'nota_limpa' : 'nota_falhou', {
       chat: clientId,
@@ -450,11 +459,10 @@ async function executeSystemReset({
     logReset('concluido', {
       chat: clientId,
       resultado: ok ? 'OK' : 'PARCIAL',
-      sessoes: internal.previousSessionCount,
-      perfis: internal.previousProfileCount,
-      leads: internal.previousLeadCount,
-      identidades: internal.previousIdentityCount,
+      sessao: internal.sessionRemoved,
+      perfil: internal.profileRemoved,
       handoffs: runtime.handoffsCleared,
+      checkpoints: runtime.botActivityCleared,
       buffers: runtime.buffersCleared,
       tarefas: runtime.queuedCancelled,
       envios_pendentes: runtime.outboundCleared,
@@ -475,7 +483,6 @@ async function executeSystemReset({
     return await activeReset;
   } finally {
     activeReset = null;
-    taskQueue?.resume?.();
   }
 }
 

@@ -44,7 +44,7 @@ class BufferManager {
     const id = normalizeBufferId(clientId);
     const item = this.map.get(id);
     if (item?.timer) clearTimeout(item.timer);
-    this.map.delete(id);
+    return this.map.delete(id);
   }
 
   clearAll() {

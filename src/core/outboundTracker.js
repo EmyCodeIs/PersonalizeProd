@@ -198,6 +198,20 @@ class OutboundTracker {
     this.byChat.clear();
     return count;
   }
+
+  clearChats(chatIds = []) {
+    const selected = [...new Set(
+      (Array.isArray(chatIds) ? chatIds : [chatIds])
+        .map(normalizeChatId)
+        .filter(Boolean),
+    )];
+    let count = 0;
+    for (const chatId of selected) {
+      count += (this.byChat.get(chatId) || []).length;
+      this.byChat.delete(chatId);
+    }
+    return count;
+  }
 }
 
 module.exports = {

@@ -99,23 +99,29 @@ async function testRuntimeBarriers() {
   const buffer = new BufferManager({ delayMs: 1000, onFlush: async () => {} });
   buffer.push('a@c.us', { text: 'um' });
   buffer.push('b@c.us', { text: 'dois' });
-  assert.equal(buffer.clearAll(), 2);
-  assert.equal(buffer.map.size, 0);
+  assert.equal(buffer.clear('a@c.us'), true);
+  assert.equal(buffer.map.has('a@c.us'), false);
+  assert.equal(buffer.map.has('b@c.us'), true, 'o buffer de outro cliente deve permanecer');
+  assert.equal(buffer.clearAll(), 1);
 
   const queue = new ChatTaskQueue({ maxUnits: 1, maxConcurrentChats: 1 });
   queue.pause();
   const first = queue.enqueue('a@c.us', async () => true).catch((error) => error.code);
-  const second = queue.enqueue('b@c.us', async () => true).catch((error) => error.code);
-  assert.equal(queue.cancelAllQueued('SYSTEM_RESET'), 2);
-  assert.deepEqual(await Promise.all([first, second]), ['SYSTEM_RESET', 'SYSTEM_RESET']);
-  assert.equal(await queue.waitForIdle({ timeoutMs: 20 }), true);
+  const second = queue.enqueue('b@c.us', async () => 'preservada').catch((error) => error.code);
+  assert.equal(queue.cancelQueuedForChats(['a@c.us'], 'SYSTEM_RESET'), 1);
+  assert.equal(await first, 'SYSTEM_RESET');
+  assert.equal(queue.stats().queued, 1, 'a tarefa do outro cliente deve permanecer');
   queue.resume();
+  assert.equal(await second, 'preservada');
+  assert.equal(await queue.waitForChatsIdle(['a@c.us'], { timeoutMs: 20 }), true);
 
   const tracker = new OutboundTracker();
   tracker.register('a@c.us', { type: 'text', text: 'um' });
   tracker.register('b@c.us', { type: 'image' });
-  assert.equal(tracker.clearAll(), 2);
-  assert.equal(tracker.stats().pending, 0);
+  assert.equal(tracker.clearChats(['a@c.us']), 1);
+  assert.equal(tracker.stats('a@c.us').pending, 0);
+  assert.equal(tracker.stats('b@c.us').pending, 1, 'o envio do outro cliente deve permanecer');
+  assert.equal(tracker.clearAll(), 1);
 }
 
 function testSingleOwnership() {
@@ -135,10 +141,16 @@ function testSingleOwnership() {
   assert.deepEqual(literalOwners, ['src/core/systemReset.js']);
 
   assert.equal(
-    source('src/core/systemReset.js').match(/Store\.resetSystem\(/g)?.length,
+    source('src/core/systemReset.js').match(/Store\.resetConversation\(/g)?.length,
     1,
-    'somente o núcleo central pode executar o reset global',
+    'o núcleo central deve zerar somente a conversa autorizada',
   );
+  assert.doesNotMatch(source('src/core/systemReset.js'), /Store\.resetSystem\(|HumanControl\.resetAll\(/);
+  assert.doesNotMatch(source('src/core/systemReset.js'), /buffer\?\.clearAll|cancelAllQueued|outboundTracker\?\.clearAll/);
+  assert.doesNotMatch(source('src/core/systemReset.js'), /ENABLE_TEST_COMMANDS=false/);
+  assert.match(source('src/core/testCommandAccessPreload.js'), /!isSystemResetCommand\(command\)/);
+  assert.match(source('src/core/sellerAliasHandoffPreload.js'), /source: 'tester_bypass'/);
+  assert.match(source('src/core/runtimeReliabilityPreload.js'), /eligible: true, reason: 'tester_bypass'/);
   assert.doesNotMatch(source('src/flow/customerFlow.js'), /resetarsys|Store\.resetSystem\(/);
   assert.doesNotMatch(source('src/bootstrap.js'), /Sistema resetado para teste|installResetCleanup/);
   assert.doesNotMatch(

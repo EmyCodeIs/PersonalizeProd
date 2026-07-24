@@ -6,6 +6,7 @@ const Identity = require('../services/contactIdentity');
 const { resolvePhoneJid } = require('./lidServiceLabelFix');
 const { findExactSellerLabel } = require('./vpsReadinessPreload');
 const { env } = require('../config/env');
+const { isTesterIdentity } = require('./testCommandAccess');
 
 function normalizeChatId(value) {
   return Identity.normalizeChatId(value);
@@ -67,6 +68,16 @@ function installSellerAliasHandoff() {
   if (typeof inspectChatLabels !== 'function') return;
 
   SellerHandoff.detectSellerLabelAssignment = async function detectSellerAcrossAliases(channel, clientId) {
+    if (isTesterIdentity({ from: clientId })) {
+      return {
+        assigned: false,
+        source: 'tester_bypass',
+        inspectionAvailable: true,
+        chatFound: true,
+        conclusive: true,
+      };
+    }
+
     if (!env.sellerLabelBlockingEnabled || !channel?.client) {
       return {
         assigned: false,
@@ -127,6 +138,15 @@ function installSellerAliasHandoff() {
   };
 
   SellerHandoff.getAutomationBlock = async function getAutomationBlockAcrossAliases(channel, clientId) {
+    if (isTesterIdentity({ from: clientId })) {
+      let aliases = [];
+      try { aliases = Identity.getLabelCandidateIds(clientId); } catch (_) {}
+      for (const candidate of uniqueIds([clientId, ...aliases])) {
+        HumanControl.clearBlock(candidate);
+      }
+      return { blocked: false, reason: null, source: 'tester_bypass' };
+    }
+
     const assignment = await SellerHandoff.detectSellerLabelAssignment(channel, clientId);
     const resolution = assignment?.identityResolution || await resolveSellerLabelCandidates(channel, clientId);
 

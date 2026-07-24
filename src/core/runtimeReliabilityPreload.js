@@ -8,6 +8,7 @@ const WppClient = require('../services/wppconnectClient');
 const { OutboundTracker } = require('./outboundTracker');
 const SellerHandoff = require('./sellerHandoff');
 const { env } = require('../config/env');
+const { isTesterIdentity } = require('./testCommandAccess');
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms || 0))));
@@ -291,6 +292,15 @@ function findManualOutboundAfterCheckpoint(messages = [], checkpoint = null) {
 }
 
 async function inspectHistoricalHumanControl(client, clientId) {
+  if (isTesterIdentity({ from: clientId })) {
+    return {
+      blocked: false,
+      available: true,
+      reason: 'tester_bypass',
+      messageId: null,
+    };
+  }
+
   const cached = readHistoryGuardCache(clientId);
   if (cached) return cached;
 
@@ -317,6 +327,10 @@ async function inspectHistoricalHumanControl(client, clientId) {
 }
 
 async function inspectUnreadRecovery(client, clientId) {
+  if (isTesterIdentity({ from: clientId })) {
+    return { eligible: true, reason: 'tester_bypass' };
+  }
+
   const currentBlock = await SellerHandoff.getAutomationBlock({ client }, clientId);
   if (currentBlock?.blocked) {
     return { eligible: false, reason: currentBlock.reason || 'human_block' };

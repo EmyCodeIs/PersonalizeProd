@@ -64,9 +64,52 @@ class ChatTaskQueue {
     return pending.length;
   }
 
+  cancelQueuedForChats(chatIds = [], code = 'QUEUE_CANCELLED') {
+    const selected = new Set(
+      (Array.isArray(chatIds) ? chatIds : [chatIds])
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    );
+    if (!selected.size) return 0;
+
+    const retained = [];
+    const cancelled = [];
+    for (const item of this.queue) {
+      if (selected.has(item.chatId)) cancelled.push(item);
+      else retained.push(item);
+    }
+    this.queue = retained;
+
+    for (const item of cancelled) {
+      if (item.publicSettled) continue;
+      item.publicSettled = true;
+      const error = new Error(`Tarefa cancelada: ${code}.`);
+      error.code = code;
+      error.chatId = item.chatId;
+      item.reject(error);
+    }
+    return cancelled.length;
+  }
+
   async waitForIdle({ timeoutMs = 15000 } = {}) {
     const deadline = Date.now() + Math.max(0, Number(timeoutMs || 0));
     while (this.runningChats.size > 0) {
+      if (Date.now() >= deadline) return false;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return true;
+  }
+
+  async waitForChatsIdle(chatIds = [], { timeoutMs = 15000 } = {}) {
+    const selected = new Set(
+      (Array.isArray(chatIds) ? chatIds : [chatIds])
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    );
+    if (!selected.size) return true;
+
+    const deadline = Date.now() + Math.max(0, Number(timeoutMs || 0));
+    while ([...selected].some((chatId) => this.runningChats.has(chatId))) {
       if (Date.now() >= deadline) return false;
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
