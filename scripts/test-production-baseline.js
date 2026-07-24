@@ -8,10 +8,20 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const manifestPath = path.join(ROOT, 'docs', 'production-baseline.json');
 
-function sha256(filePath) {
-  const hash = crypto.createHash('sha256');
-  hash.update(fs.readFileSync(filePath));
-  return hash.digest('hex');
+function hashBuffer(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function normalizeTextLineEndings(value) {
+  return String(value).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+}
+
+function sha256Binary(filePath) {
+  return hashBuffer(fs.readFileSync(filePath));
+}
+
+function sha256Text(filePath) {
+  return hashBuffer(Buffer.from(normalizeTextLineEndings(fs.readFileSync(filePath, 'utf8')), 'utf8'));
 }
 
 function readJson(filePath) {
@@ -26,15 +36,28 @@ function relativeRequireOrder(source) {
 function assertTrackedFile(item, group) {
   const absolute = path.join(ROOT, item.path);
   assert.ok(fs.existsSync(absolute), `${group}: arquivo ausente: ${item.path}`);
+
+  // Arquivos de runtime são texto e podem chegar como LF (Linux/GitHub) ou
+  // CRLF (Windows com core.autocrlf). Normalizamos somente as quebras de linha
+  // antes do hash. Assets continuam binários e precisam ser idênticos byte a byte.
+  const currentHash = group === 'runtime' ? sha256Text(absolute) : sha256Binary(absolute);
   assert.strictEqual(
-    sha256(absolute),
+    currentHash,
     item.sha256,
     `${group}: conteúdo da produção mudou sem atualizar o baseline: ${item.path}`,
   );
+
   if (Number.isFinite(Number(item.size))) {
     assert.strictEqual(fs.statSync(absolute).size, Number(item.size), `${group}: tamanho alterado: ${item.path}`);
   }
 }
+
+// Protege explicitamente a compatibilidade multiplataforma do próprio teste.
+assert.strictEqual(
+  hashBuffer(Buffer.from(normalizeTextLineEndings('linha 1\nlinha 2\n'), 'utf8')),
+  hashBuffer(Buffer.from(normalizeTextLineEndings('linha 1\r\nlinha 2\r\n'), 'utf8')),
+  'normalização LF/CRLF do baseline deixou de ser equivalente',
+);
 
 const manifest = readJson(manifestPath);
 const packageJson = readJson(path.join(ROOT, 'package.json'));
