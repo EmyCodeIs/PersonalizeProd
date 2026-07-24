@@ -144,7 +144,9 @@ A Etapa 1 não substitui esses testes. Ela adiciona uma trava de identidade da v
 
 ## Limites desta validação
 
-- A sintaxe foi validada localmente em 91 arquivos.
+- A sintaxe foi validada localmente em 92 arquivos após a inclusão do teste de baseline.
 - O teste novo de baseline não depende de WPPConnect ou navegador.
-- A instalação completa das dependências não foi concluída no ambiente de análise por limite de execução; portanto, a suíte completa existente ainda deve ser executada no Windows/VPS.
+- Todos os comandos da suíte `npm test` foram executados e passaram em ambiente local com um adaptador temporário compatível com `dotenv`, usado apenas porque a instalação de dependências excedeu o limite do ambiente de análise.
+- Três expectativas antigas de testes foram alinhadas ao comportamento real da `main`: duas referências ao emoji final inexistente e a classificação-base de etiquetas manuais.
+- A instalação real via `npm ci` ainda precisa ser confirmada no Windows/VPS; o adaptador temporário não foi versionado.
 - Nenhum teste local substitui a homologação com o WhatsApp conectado.
