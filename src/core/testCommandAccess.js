@@ -28,11 +28,13 @@ function parseMap(value) {
 }
 
 function commandAdminConfig() {
+  // Variáveis administrativas vazias não anulam a whitelist geral. Isso evita
+  // negar /resetarsys quando o .env contém as chaves, mas sem valores próprios.
   const explicitAdminConfig = [
     'TEST_COMMAND_ALLOWED_CLIENT_NUMBERS',
     'TEST_COMMAND_ALLOWED_CHAT_IDS',
     'TEST_COMMAND_LID_NUMBER_MAP',
-  ].some((name) => process.env[name] !== undefined);
+  ].some((name) => String(process.env[name] || '').trim().length > 0);
 
   return {
     allowedNumbers: splitList(
@@ -85,8 +87,8 @@ function isTestCommandAuthorized({ from, raw } = {}) {
     .filter(Boolean);
   const allowedNumbers = config.allowedNumbers.map(onlyDigits).filter(Boolean);
 
-  // Segurança por padrão: ENABLE_TEST_COMMANDS=true sem administradores
-  // configurados não libera o comando para ninguém.
+  // Segurança por padrão: sem número/chat administrativo ou whitelist geral,
+  // o comando continua negado.
   if (!allowedChatIds.length && !allowedNumbers.length) {
     return { allowed: false, reason: 'nenhum_admin_configurado' };
   }
