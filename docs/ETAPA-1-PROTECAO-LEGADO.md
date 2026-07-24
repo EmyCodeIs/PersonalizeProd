@@ -25,6 +25,8 @@ O arquivo `docs/production-baseline.json` registra hashes SHA-256 de:
 
 O teste `scripts/test-production-baseline.js` falha quando um item protegido muda sem uma revisão explícita do baseline.
 
+Arquivos de runtime são texto. Antes de calcular o hash, o teste normaliza `LF` e `CRLF` para que o mesmo conteúdo seja reconhecido no Linux, GitHub e Windows. Assets continuam comparados byte a byte e não recebem normalização.
+
 ## Regras para as próximas etapas
 
 Uma mudança futura em arquivo protegido não é automaticamente proibida, mas precisa ser explícita:
@@ -148,5 +150,6 @@ A Etapa 1 não substitui esses testes. Ela adiciona uma trava de identidade da v
 - O teste novo de baseline não depende de WPPConnect ou navegador.
 - Todos os comandos da suíte `npm test` foram executados e passaram em ambiente local com um adaptador temporário compatível com `dotenv`, usado apenas porque a instalação de dependências excedeu o limite do ambiente de análise.
 - Três expectativas antigas de testes foram alinhadas ao comportamento real da `main`: duas referências ao emoji final inexistente e a classificação-base de etiquetas manuais.
-- A instalação real via `npm ci` ainda precisa ser confirmada no Windows/VPS; o adaptador temporário não foi versionado.
+- O `npm ci` real foi executado com sucesso no Windows. O primeiro `npm test` expôs diferença de quebra de linha `LF`/`CRLF`; o baseline foi corrigido para ser multiplataforma sem alterar a proteção binária dos assets.
+- O `npm test` real deve ser repetido após essa correção.
 - Nenhum teste local substitui a homologação com o WhatsApp conectado.
