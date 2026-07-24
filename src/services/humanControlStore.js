@@ -128,8 +128,10 @@ function clearBlock(clientId) {
 }
 
 function resetAll() {
+  const previousCount = Object.keys(state.blocks || {}).length;
   state.blocks = {};
   persist();
+  return previousCount;
 }
 
 purgeExpiredBlocks({ write: false });

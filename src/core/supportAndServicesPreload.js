@@ -21,10 +21,6 @@ function normalized(value) {
   return normalizeText(firstLine(value));
 }
 
-function isResetCommand(value) {
-  return /^\/(?:resetarsys|reset|reiniciar)$/i.test(firstLine(value));
-}
-
 function isSupportRequest(value) {
   const text = normalized(value);
   if (!text) return false;
@@ -292,8 +288,6 @@ CustomerFlow.processCustomerMessage = async function processCustomerMessageWithS
   const { clientId, channel } = args;
   const session = Store.getSession(clientId);
   if (!session) return originalProcessCustomerMessage(args);
-
-  if (isResetCommand(args.text)) return originalProcessCustomerMessage(args);
 
   if (Reliability.isShortAcknowledgement?.(args.text)) {
     await channel?.sendText?.(clientId, '😁👍');
