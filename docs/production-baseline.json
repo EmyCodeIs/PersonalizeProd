@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "repository": "EmyCodeIs/PersonalizeProd",
+  "productionBranch": "main",
+  "productionCommit": "fe6ca12df261015fdca9a2df87caa608ac51c944",
+  "package": {
+    "name": "personalize-wppconnect-cliente-flow",
+    "version": "0.7.3",
+    "main": "src/start-with-required-labels.js",
+    "start": "node src/start-with-required-labels.js"
+  },
+  "protectedRuntimeFiles": [
+    {"path":"src/config/env.js","sha256":"755fa37c0e83b2a852d344c4145a090c372688bd51e0dc8db7c32783f25464b6"},
+    {"path":"src/start-with-required-labels.js","sha256":"b276ae5055ae76c9c5b6b8dea97136d89bb30b13cc21ed2064271547fac094ec"},
+    {"path":"src/bootstrap.js","sha256":"e093e0cb00e6d8e221681c07b08e91ab0387aace8fee105f122b8216b89c173f"},
+    {"path":"src/index.js","sha256":"a6ff8707a3d57ad1b90fda62fd4d86e8adaff2f0b9bae7c4c1efd639dfb719a4"},
+    {"path":"src/core/messages.js","sha256":"535bdacc757993a16085966011c6c3f0c56f27be70ef20881ada10601d5ad5eb"},
+    {"path":"src/core/menuCatalog.js","sha256":"cc492adfee379cf0b9eb42b675250f5daabb7f0529fb1ebae76dc467932239b1"},
+    {"path":"src/core/mostruario.js","sha256":"b54ce6ae13d6a0cff13d0b37fd8973e7b60821b573224bbd1d1096cfb26f60dd"},
+    {"path":"src/core/catalogMostruarioPreload.js","sha256":"67e059cdbaa6a2cdb71a1a0a9cc71aabf4d81325f80af53c77524167793b0744"},
+    {"path":"src/core/customerFlowFixPreload.js","sha256":"cdef335160793e346ebfa9d0c6db50e9363ad2a966b9480eb90f4068b0b8d4cb"},
+    {"path":"src/core/supportAndServicesPreload.js","sha256":"2b70a3279da221ab31c7b65e276d29f27047df595b90fd3bdb8aa7e88fbd1ce2"},
+    {"path":"src/core/exactAcknowledgementPreload.js","sha256":"efd723af77c230e47cedea23c122d22fcff596c5a017c69183ae2209537d5515"},
+    {"path":"src/core/supportLabelSelectionPreload.js","sha256":"5fca31dd08ce84d5c9796c67aa76455c9678bac75565f0438a69a176b8c99672"},
+    {"path":"src/domain/acrilicoThickness.js","sha256":"844b22a5933315ca3fed7464291f6712a7936071de3e0b6e55d639a992f216aa"},
+    {"path":"src/flow/customerFlow.js","sha256":"d64ac97e904ddc2ad1b08019b0d47b7043304f00fe86b97770e7e798ac985947"}
+  ],
+  "protectedAssets": [
+    {"path":"assets/.gitkeep","sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","size":0},
+    {"path":"assets/capa-mostruario.jpg","sha256":"e724927c16e75b5e829c7fe6be0a3a53d3e3fa641f16b92caee11292f5ca8858","size":1600442},
+    {"path":"assets/capa_bem_vindos.jpg","sha256":"6a40e398f7c3280cc3ffc830fb343a4f86815382662f49870cc8baa94ca715d5","size":609525},
+    {"path":"assets/mostruario.pdf","sha256":"18f33d48e1f5c4f90daf53e29c0f0cd11a747da0cda8a6fb8e90359332a9eb9f","size":57385811},
+    {"path":"assets/tabela-cores-v2.jpg","sha256":"f69e6a4a94a7708ba00c73d67fae5012b506c2a5d7656c312eb5b726fc1adea0","size":461380},
+    {"path":"assets/tabela-espessura.jpg","sha256":"3dcd6d892e855b27486e577cd6f9ca956aa7405e8275dbe875cbb7b7f0ea9a2c","size":333332},
+    {"path":"assets/tabela-profundidade-3mm.jpg","sha256":"044b55bfb4a2489e949c9074a37a268f7570fdf28629c5c8a6159a7b4daf9d0a","size":54035},
+    {"path":"assets/ticket-logo.png","sha256":"599e2088a9dc631c2ff413e33857fb07e097060b000d322a397f02936f887a61","size":13332}
+  ],
+  "startupPreloads": [
+    "./core/safeLoggingPreload",
+    "./core/operationalLabelPolicyPreload",
+    "./core/exclusiveServiceLabelsPreload",
+    "./core/serviceLabelAssignmentPreload",
+    "./core/catalogMostruarioPreload",
+    "./core/handoffPreload",
+    "./core/resetCommandHandoffPreload",
+    "./core/testCommandAccessPreload",
+    "./core/resetCleanupPreload",
+    "./core/safeResetCleanupOverridePreload",
+    "./core/customerFlowFixPreload",
+    "./core/preferredSellerNotePreload",
+    "./core/completedFlowSilencePreload",
+    "./core/runtimeReliabilityPreload",
+    "./core/unreadReconnectRecoveryPreload",
+    "./core/supportAndServicesPreload",
+    "./core/supportLabelSelectionPreload",
+    "./core/exactAcknowledgementPreload",
+    "./core/bufferStagePolicyPreload",
+    "./core/vpsReadinessPreload",
+    "./core/sellerAliasHandoffPreload",
+    "./core/sellerLabelEventsPreload"
+  ],
+  "invariants": {
+    "commercialBehaviorChanged": false,
+    "messagesChanged": false,
+    "menusChanged": false,
+    "assetsChanged": false,
+    "handoffChanged": false,
+    "recoveryChanged": false,
+    "labelsChanged": false,
+    "resetChanged": false
+  }
+}
