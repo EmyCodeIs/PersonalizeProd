@@ -215,6 +215,32 @@ function resetSession(clientId) {
   return state.sessions[id];
 }
 
+function resetConversation(clientId) {
+  const id = normalizeClientId(clientId);
+  if (!id) {
+    return {
+      sessionRemoved: 0,
+      profileRemoved: 0,
+    };
+  }
+
+  const sessionRemoved = state.sessions[id] ? 1 : 0;
+  const profileRemoved = profileState.profiles[id] ? 1 : 0;
+  if (sessionRemoved) {
+    delete state.sessions[id];
+    persistState();
+  }
+  if (profileRemoved) {
+    delete profileState.profiles[id];
+    persistProfiles();
+  }
+
+  return {
+    sessionRemoved,
+    profileRemoved,
+  };
+}
+
 function getCustomerProfile(clientId) {
   const id = normalizeClientId(clientId);
   if (!id) return null;
@@ -362,6 +388,7 @@ module.exports = {
   getSession,
   saveSession,
   resetSession,
+  resetConversation,
   resetSystem,
   appendLead,
   listSessions,

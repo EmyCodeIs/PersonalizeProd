@@ -24,11 +24,14 @@ function saveState() {
 }
 
 function normalizeChatId(value) {
-  const raw = String(value || '').trim().toLowerCase();
+  const serialized = value && typeof value === 'object'
+    ? (value._serialized || value.id?._serialized || value.id || '')
+    : value;
+  const raw = String(serialized || '').trim().toLowerCase();
   if (!raw) return '';
   if (/@(c\.us|g\.us|lid)$/i.test(raw)) return raw;
   const digits = raw.replace(/\D/g, '');
-  return digits ? `${digits}@c.us` : raw;
+  return digits ? `${digits}@c.us` : '';
 }
 
 function onlyDigits(value) {

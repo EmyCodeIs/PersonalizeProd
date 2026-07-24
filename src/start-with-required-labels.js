@@ -30,6 +30,10 @@ if (duplicateRemovalRequested && !duplicateRemovalConfirmed) {
   );
 }
 
+// Instala a barreira de sincronização antes de qualquer módulo capturar as
+// funções de etiquetas, recuperação ou conexão do WPPConnect.
+require('./core/synchronizationGuardPreload');
+
 const serviceLabels = require('./core/serviceLabels');
 const { ensureRequiredLabelsOnce } = require('./core/requiredLabelsStartup');
 const { installIdempotentServiceLabels } = require('./core/idempotentServiceLabels');
@@ -59,10 +63,6 @@ require('./core/resetCommandHandoffPreload');
 // Mantém os comandos ativos somente para os números/IDs administrativos
 // configurados separadamente da whitelist geral de atendimento.
 require('./core/testCommandAccessPreload');
-require('./core/resetCleanupPreload');
-// Substitui a limpeza ampla antiga por uma limpeza que remove somente as
-// etiquetas gerenciadas, preservando as etiquetas manuais do contato.
-require('./core/safeResetCleanupOverridePreload');
 require('./core/customerFlowFixPreload');
 require('./core/preferredSellerNotePreload');
 require('./core/completedFlowSilencePreload');

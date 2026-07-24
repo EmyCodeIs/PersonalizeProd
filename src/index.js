@@ -27,6 +27,10 @@ const BotActivity = require('./services/botActivityStore');
 const Store = require('./services/leadStore');
 const Identity = require('./services/contactIdentity');
 const { env } = require('./config/env');
+const {
+  executeSystemReset,
+  isSystemResetCommand,
+} = require('./core/systemReset');
 
 const BUILD_ID = 'real-whatsapp-business-lists-create-and-recover-2026-07-10-07';
 const ACTIVE_SERVICE_FLOWS = new Set(['letreiro', 'plotagem', 'outros']);
@@ -37,7 +41,7 @@ const MULTI_MESSAGE_STAGES = new Set([
   'outros_descricao',
   'outros_referencia',
 ]);
-const IMMEDIATE_TEST_COMMANDS = new Set(['/reset', '/reiniciar', '/resetarsys']);
+const IMMEDIATE_TEST_COMMANDS = new Set(['/reset', '/reiniciar']);
 
 function messageKey(message) {
   const rawId = message?.id?._serialized || message?.id || message?.messageId || message?.key?.id;
@@ -135,25 +139,39 @@ function firstLine(value) {
 
 function isImmediateTestCommand(text) {
   const command = firstLine(text).toLowerCase();
-  return IMMEDIATE_TEST_COMMANDS.has(command);
+  return isSystemResetCommand(command) || IMMEDIATE_TEST_COMMANDS.has(command);
 }
 
-async function runImmediateTestCommand(channel, clientId, text) {
+async function runImmediateTestCommand({
+  channel,
+  clientId,
+  text,
+  raw,
+  source,
+  buffer,
+  taskQueue,
+  processedMessageIds,
+  repairedServiceLabels,
+}) {
   const command = firstLine(text).toLowerCase();
-  if (!env.enableTestCommands || !IMMEDIATE_TEST_COMMANDS.has(command)) return false;
 
-  if (command === '/resetarsys') {
-    const result = Store.resetSystem();
-    await channel.sendText(
+  if (isSystemResetCommand(command)) {
+    await executeSystemReset({
+      channel,
       clientId,
-      `Sistema resetado para teste.\n\nSessões apagadas: ${result.previousSessionCount}\nPerfis apagados: ${result.previousProfileCount}\nLeads apagados: ${result.previousLeadCount}\n\nMe envie uma nova mensagem para começar como primeiro contato.`,
-      { noDelay: true, noTyping: true }
-    );
-    Store.resetSession(clientId);
+      raw,
+      source,
+      buffer,
+      taskQueue,
+      processedMessageIds,
+      repairedServiceLabels,
+    });
     return true;
   }
 
-  if (command === '/reset' || command === '/reiniciar') {
+  if (!env.enableTestCommands || !IMMEDIATE_TEST_COMMANDS.has(command)) return false;
+
+  if (IMMEDIATE_TEST_COMMANDS.has(command)) {
     Store.resetSession(clientId);
     await channel.sendText(
       clientId,
@@ -603,6 +621,10 @@ async function main() {
       } catch (err) {
         evaluateRuntimePressure(taskQueue);
         const reason = err?.code || 'QUEUE_ERROR';
+        if (reason === 'SYSTEM_RESET') {
+          console.log(`[QUEUE] tarefa cancelada pelo reset do sistema | chat=${clientId}`);
+          return;
+        }
         console.warn(`[QUEUE] falha no chat ${clientId}: ${reason} - ${err?.message || err}`);
         await channel?.markUnread?.(clientId).catch(() => false);
       }
@@ -650,7 +672,17 @@ async function main() {
       return;
     }
 
-    if (await runImmediateTestCommand(channel, canonicalChatId, effectiveText)) {
+    if (await runImmediateTestCommand({
+      channel,
+      clientId: canonicalChatId,
+      text: effectiveText,
+      raw,
+      source,
+      buffer,
+      taskQueue,
+      processedMessageIds,
+      repairedServiceLabels,
+    })) {
       console.log(`[PersonalizeWppConect] comando imediato executado (${source}) em ${canonicalChatId}`);
       buffer.clear(canonicalChatId);
       return;

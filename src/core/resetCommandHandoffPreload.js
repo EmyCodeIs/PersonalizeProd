@@ -2,8 +2,9 @@
 
 const WppClient = require('../services/wppconnectClient');
 const { env } = require('../config/env');
+const { isSystemResetCommand } = require('./systemReset');
 
-const INTERNAL_TEST_COMMANDS = new Set(['/reset', '/reiniciar', '/resetarsys']);
+const INTERNAL_TEST_COMMANDS = new Set(['/reset', '/reiniciar']);
 
 function firstLine(value) {
   return String(value || '')
@@ -13,7 +14,8 @@ function firstLine(value) {
 }
 
 function isInternalTestCommand(value) {
-  return INTERNAL_TEST_COMMANDS.has(firstLine(value).toLowerCase());
+  const command = firstLine(value).toLowerCase();
+  return isSystemResetCommand(command) || INTERNAL_TEST_COMMANDS.has(command);
 }
 
 function installResetCommandHandoffBypass() {
@@ -26,13 +28,16 @@ function installResetCommandHandoffBypass() {
 
     const onOutgoingMessage = async (payload = {}) => {
       const text = String(payload.text || payload?.raw?.body || payload?.raw?.text || '').trim();
+      const command = firstLine(text).toLowerCase();
+      const shouldRoute = isSystemResetCommand(command)
+        || (env.enableTestCommands && INTERNAL_TEST_COMMANDS.has(command));
 
       // Quando o comando é digitado pelo próprio WhatsApp Business, WPPConnect o
       // entrega como mensagem de saída. Ele precisa voltar ao processador de
       // comandos antes que o monitor de saída o classifique como atendimento humano.
-      if (env.enableTestCommands && isInternalTestCommand(text)) {
+      if (shouldRoute) {
         if (typeof originalOnMessage !== 'function') return undefined;
-        console.log(`[COMANDO TESTE] saída manual encaminhada ao processador sem handoff | comando=${firstLine(text).toLowerCase()}`);
+        console.log(`[COMANDO TESTE] saída manual encaminhada ao processador sem handoff | comando=${command}`);
         return originalOnMessage({
           ...payload,
           text,

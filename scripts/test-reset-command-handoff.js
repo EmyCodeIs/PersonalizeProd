@@ -3,7 +3,7 @@
 const assert = require('assert/strict');
 
 async function run() {
-  process.env.ENABLE_TEST_COMMANDS = 'true';
+  process.env.ENABLE_TEST_COMMANDS = 'false';
 
   const envPath = require.resolve('../src/config/env');
   const clientPath = require.resolve('../src/services/wppconnectClient');
@@ -39,10 +39,18 @@ async function run() {
     });
   }
 
-  assert.equal(routedCommands.length, 3, 'comandos internos precisam voltar ao processador de entrada');
-  assert.deepEqual(routedCommands.map((item) => item.text), ['/resetarsys', '/reset', '/reiniciar']);
+  assert.equal(
+    routedCommands.length,
+    1,
+    '/resetarsys precisa voltar ao processador mesmo com ENABLE_TEST_COMMANDS=false',
+  );
+  assert.deepEqual(routedCommands.map((item) => item.text), ['/resetarsys']);
   assert.ok(routedCommands.every((item) => item.source === 'manual-test-command'));
-  assert.equal(manualMessages.length, 0, 'comandos internos não podem chegar ao handoff');
+  assert.deepEqual(
+    manualMessages.map((item) => item.text),
+    ['/reset', '/reiniciar'],
+    'os atalhos comuns continuam desativados junto com ENABLE_TEST_COMMANDS',
+  );
 
   await channel.emitOutgoing({
     from: '5511999999999@c.us',
@@ -51,13 +59,13 @@ async function run() {
     source: 'onAnyMessage',
   });
 
-  assert.equal(manualMessages.length, 1, 'mensagem humana comum precisa continuar chegando ao handoff');
-  assert.equal(routedCommands.length, 3);
+  assert.equal(manualMessages.length, 3, 'mensagem humana comum precisa continuar chegando ao handoff');
+  assert.equal(routedCommands.length, 1);
 
   WppClient.createWppChannel = originalCreateWppChannel;
   delete WppClient.__resetCommandHandoffBypassInstalled;
 
-  console.log('✅ Reset/handoff verificado: comandos internos não bloqueiam o cliente; mensagem humana comum continua bloqueando.');
+  console.log('✅ Reset/handoff verificado: /resetarsys independe da flag e não vira handoff.');
 }
 
 run().catch((error) => {

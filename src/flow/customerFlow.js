@@ -234,17 +234,6 @@ async function processCustomerMessage({ clientId, text, channel, messages: inbou
   const input = clean(text);
   if (!s || !input) return s;
 
-  if (env.enableTestCommands && /^\/resetarsys$/i.test(first(input))) {
-    const r = Store.resetSystem();
-    await channel.sendText(clientId, `Sistema resetado para teste.\n\nSessões apagadas: ${r.previousSessionCount}\nPerfis apagados: ${r.previousProfileCount}\nLeads apagados: ${r.previousLeadCount}\n\nMe envie uma nova mensagem para começar como primeiro contato.`);
-    return Store.resetSession(clientId);
-  }
-  if (env.enableTestCommands && /^\/(reset|reiniciar)$/i.test(first(input))) {
-    const fresh = Store.resetSession(clientId);
-    await channel.sendText(clientId, 'Atendimento reiniciado para teste. Envie uma nova mensagem para começar.');
-    return fresh;
-  }
-
   const d = s.dados || (s.dados = {});
   const foundName = extractName(input), foundPhone = extractPhone(input);
   if (foundName && !d.nome) d.nome = foundName;

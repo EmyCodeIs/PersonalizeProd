@@ -3,6 +3,7 @@
 const Identity = require('../services/contactIdentity');
 const HumanControl = require('../services/humanControlStore');
 const { env } = require('../config/env');
+const { isTesterIdentity } = require('./testCommandAccess');
 
 const COLOR_HEX = Object.freeze({
   green: '#00a884',
@@ -216,6 +217,11 @@ async function detectSellerLabelAssignment(channel, clientId) {
 }
 
 function registerManualTakeover(clientId, payload = {}) {
+  if (isTesterIdentity({ from: clientId, raw: payload.raw })) {
+    HumanControl.clearBlock(clientId);
+    console.log(`[HANDOFF] mensagem manual da tester ignorada | cliente=${clientId}`);
+    return null;
+  }
   return HumanControl.setBlock(clientId, {
     reason: payload.reason || 'manual_outbound_message',
     source: payload.source || 'manual_outbound_message',
@@ -226,6 +232,10 @@ function registerManualTakeover(clientId, payload = {}) {
 }
 
 async function getAutomationBlock(channel, clientId) {
+  if (isTesterIdentity({ from: clientId })) {
+    HumanControl.clearBlock(clientId);
+    return { blocked: false, reason: null, source: 'tester_bypass' };
+  }
   const sellerAssignment = await detectSellerLabelAssignment(channel, clientId);
   if (sellerAssignment.assigned) {
     HumanControl.setBlock(clientId, {

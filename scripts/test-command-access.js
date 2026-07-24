@@ -1,12 +1,17 @@
 'use strict';
 
 const assert = require('assert');
-const { isTestCommandAuthorized } = require('../src/core/testCommandAccess');
+const {
+  isTesterIdentity,
+  isTestCommandAuthorized,
+} = require('../src/core/testCommandAccess');
 
 const KEYS = [
   'TEST_COMMAND_ALLOWED_CLIENT_NUMBERS',
   'TEST_COMMAND_ALLOWED_CHAT_IDS',
   'TEST_COMMAND_LID_NUMBER_MAP',
+  'ALLOWED_CLIENT_NUMBERS',
+  'ALLOWED_CHAT_IDS',
   'LID_NUMBER_MAP',
 ];
 const previous = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
@@ -35,6 +40,11 @@ try {
     true,
     'LID administrativo deve ser autorizado',
   );
+  assert.strictEqual(
+    isTesterIdentity({ from: '18885055098907@lid' }),
+    true,
+    'o administrador configurado deve ser reconhecido como tester',
+  );
 
   assert.strictEqual(
     isTestCommandAuthorized({ from: '5511999999999@c.us' }).allowed,
@@ -45,11 +55,30 @@ try {
   process.env.TEST_COMMAND_ALLOWED_CLIENT_NUMBERS = '';
   process.env.TEST_COMMAND_ALLOWED_CHAT_IDS = '';
   process.env.TEST_COMMAND_LID_NUMBER_MAP = '';
+  delete process.env.ALLOWED_CLIENT_NUMBERS;
+  delete process.env.ALLOWED_CHAT_IDS;
 
   assert.strictEqual(
     isTestCommandAuthorized({ from: '5531971386091@c.us' }).allowed,
     false,
     'sem administradores configurados o padrão deve negar todos',
+  );
+
+  // Este é o caso real do .env: chaves administrativas presentes, porém vazias.
+  // Elas não podem anular a whitelist geral usada pela tester.
+  process.env.ALLOWED_CLIENT_NUMBERS = '31971386091';
+  process.env.ALLOWED_CHAT_IDS = '18885055098907@lid';
+  process.env.LID_NUMBER_MAP = '18885055098907@lid=31971386091';
+
+  assert.strictEqual(
+    isTesterIdentity({ from: '18885055098907@lid' }),
+    true,
+    'a whitelist geral deve servir como fallback quando as variáveis administrativas estão vazias',
+  );
+  assert.strictEqual(
+    isTestCommandAuthorized({ from: '5531971386091@c.us' }).allowed,
+    true,
+    'o /resetarsys deve funcionar pelo número permitido mesmo com chaves administrativas vazias',
   );
 
   console.log('✅ Whitelist administrativa dos comandos verificada');
