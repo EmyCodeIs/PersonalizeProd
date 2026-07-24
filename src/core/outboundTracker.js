@@ -192,6 +192,12 @@ class OutboundTracker {
     for (const list of this.byChat.values()) pending += list.length;
     return { pending };
   }
+
+  clearAll() {
+    const count = this.stats().pending;
+    this.byChat.clear();
+    return count;
+  }
 }
 
 module.exports = {

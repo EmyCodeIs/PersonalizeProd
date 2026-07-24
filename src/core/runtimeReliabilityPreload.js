@@ -505,23 +505,11 @@ function installHistoricalHumanGuard() {
   SellerHandoff.__historicalHumanGuardInstalled = true;
 }
 
-function installResetCleanup() {
-  if (Store.__botActivityResetInstalled || typeof Store.resetSystem !== 'function') return;
-  const originalResetSystem = Store.resetSystem.bind(Store);
-  Store.resetSystem = function resetSystemWithBotActivity(...args) {
-    const result = originalResetSystem(...args);
-    try { BotActivity.resetAll(); } catch (_) {}
-    return result;
-  };
-  Store.__botActivityResetInstalled = true;
-}
-
 installPersistentHumanHistory();
 installBotActivityTracking();
 installGratitudeReply();
 installUnreadRecoveryGuard();
 installHistoricalHumanGuard();
-installResetCleanup();
 
 console.log('[CONFIABILIDADE] agradecimentos=👍 | arte=buffer ampliado | não lidas=histórico humano protegido | recuperação=fila ponderada');
 

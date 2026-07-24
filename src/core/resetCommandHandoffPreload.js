@@ -2,8 +2,9 @@
 
 const WppClient = require('../services/wppconnectClient');
 const { env } = require('../config/env');
+const { isSystemResetCommand } = require('./systemReset');
 
-const INTERNAL_TEST_COMMANDS = new Set(['/reset', '/reiniciar', '/resetarsys']);
+const INTERNAL_TEST_COMMANDS = new Set(['/reset', '/reiniciar']);
 
 function firstLine(value) {
   return String(value || '')
@@ -13,7 +14,8 @@ function firstLine(value) {
 }
 
 function isInternalTestCommand(value) {
-  return INTERNAL_TEST_COMMANDS.has(firstLine(value).toLowerCase());
+  const command = firstLine(value).toLowerCase();
+  return isSystemResetCommand(command) || INTERNAL_TEST_COMMANDS.has(command);
 }
 
 function installResetCommandHandoffBypass() {
