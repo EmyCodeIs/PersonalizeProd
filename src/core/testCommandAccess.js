@@ -27,10 +27,46 @@ function parseMap(value) {
   }, {});
 }
 
+function firstNonEmptyList(...values) {
+  for (const value of values) {
+    const parsed = splitList(value);
+    if (parsed.length) return parsed;
+  }
+  return [];
+}
+
 function commandAdminConfig() {
+  const explicitTestConfig = [
+    process.env.TEST_COMMAND_ALLOWED_CLIENT_NUMBERS,
+    process.env.TEST_COMMAND_ALLOWED_CHAT_IDS,
+  ].some((value) => String(value || '').trim().length > 0);
+  const explicitAdminConfig = [
+    process.env.ADMIN_WHATSAPP_NUMBERS,
+    process.env.ADMIN_WHATSAPP_CHAT_IDS,
+  ].some((value) => String(value || '').trim().length > 0);
+
+  let allowedNumbers = [];
+  let allowedChatIds = [];
+  let source = 'none';
+
+  if (explicitTestConfig) {
+    allowedNumbers = splitList(process.env.TEST_COMMAND_ALLOWED_CLIENT_NUMBERS);
+    allowedChatIds = splitList(process.env.TEST_COMMAND_ALLOWED_CHAT_IDS);
+    source = 'test_command';
+  } else if (explicitAdminConfig) {
+    allowedNumbers = splitList(process.env.ADMIN_WHATSAPP_NUMBERS);
+    allowedChatIds = splitList(process.env.ADMIN_WHATSAPP_CHAT_IDS);
+    source = 'admin_whatsapp';
+  } else {
+    allowedNumbers = splitList(process.env.ALLOWED_CLIENT_NUMBERS);
+    allowedChatIds = splitList(process.env.ALLOWED_CHAT_IDS);
+    source = 'allowed_clients';
+  }
+
   return {
-    allowedNumbers: splitList(process.env.TEST_COMMAND_ALLOWED_CLIENT_NUMBERS),
-    allowedChatIds: splitList(process.env.TEST_COMMAND_ALLOWED_CHAT_IDS),
+    allowedNumbers,
+    allowedChatIds,
+    source,
     lidMap: {
       ...parseMap(process.env.LID_NUMBER_MAP),
       ...parseMap(process.env.TEST_COMMAND_LID_NUMBER_MAP),
@@ -38,8 +74,16 @@ function commandAdminConfig() {
   };
 }
 
+function serializeCandidate(value) {
+  if (!value) return '';
+  if (typeof value === 'object') {
+    return String(value._serialized || value.id?._serialized || value.id || '').trim();
+  }
+  return String(value).trim();
+}
+
 function collectCandidates({ from, raw } = {}, lidMap = {}) {
-  const fromKey = String(from || '').trim().toLowerCase();
+  const fromKey = serializeCandidate(from).toLowerCase();
   const mapped = fromKey ? lidMap[fromKey] : null;
   const values = [
     from,
@@ -59,9 +103,7 @@ function collectCandidates({ from, raw } = {}, lidMap = {}) {
     raw?.author,
   ];
 
-  return values
-    .map((item) => String(item || '').trim())
-    .filter(Boolean);
+  return [...new Set(values.map(serializeCandidate).filter(Boolean))];
 }
 
 function isTestCommandAuthorized({ from, raw } = {}) {
@@ -71,17 +113,15 @@ function isTestCommandAuthorized({ from, raw } = {}) {
     .filter(Boolean);
   const allowedNumbers = config.allowedNumbers.map(onlyDigits).filter(Boolean);
 
-  // Segurança por padrão: ENABLE_TEST_COMMANDS=true sem administradores
-  // configurados não libera o comando para ninguém.
   if (!allowedChatIds.length && !allowedNumbers.length) {
-    return { allowed: false, reason: 'nenhum_admin_configurado' };
+    return { allowed: false, reason: 'nenhum_admin_configurado', configSource: config.source };
   }
 
   const candidates = collectCandidates({ from, raw }, config.lidMap);
   for (const candidate of candidates) {
     const lower = candidate.toLowerCase();
     if (allowedChatIds.includes(lower)) {
-      return { allowed: true, reason: 'chat_id', matched: candidate };
+      return { allowed: true, reason: 'chat_id', matched: candidate, configSource: config.source };
     }
 
     const digits = onlyDigits(candidate);
@@ -94,7 +134,7 @@ function isTestCommandAuthorized({ from, raw } = {}) {
         || allowedNumber.endsWith(digits)
         || lastDigits(digits, 11) === lastDigits(allowedNumber, 11)
       ) {
-        return { allowed: true, reason: 'numero', matched: candidate };
+        return { allowed: true, reason: 'numero', matched: candidate, configSource: config.source };
       }
     }
   }
@@ -102,16 +142,24 @@ function isTestCommandAuthorized({ from, raw } = {}) {
   return {
     allowed: false,
     reason: 'fora_da_whitelist_administrativa',
+    configSource: config.source,
     candidates: candidates.slice(0, 8),
   };
+}
+
+function isTesterIdentity({ from, raw } = {}) {
+  return isTestCommandAuthorized({ from, raw }).allowed;
 }
 
 module.exports = {
   collectCandidates,
   commandAdminConfig,
+  firstNonEmptyList,
+  isTesterIdentity,
   isTestCommandAuthorized,
   lastDigits,
   onlyDigits,
   parseMap,
+  serializeCandidate,
   splitList,
 };

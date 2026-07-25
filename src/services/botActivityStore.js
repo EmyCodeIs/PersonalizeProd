@@ -122,6 +122,17 @@ function getLastBotOutbound(clientId) {
   return null;
 }
 
+function clearContact(clientId) {
+  let removed = 0;
+  for (const key of candidateKeys(clientId)) {
+    if (!Object.prototype.hasOwnProperty.call(state.contacts, key)) continue;
+    delete state.contacts[key];
+    removed += 1;
+  }
+  if (removed) persist();
+  return removed;
+}
+
 function resetAll() {
   state.contacts = {};
   persist();
@@ -141,6 +152,7 @@ if (!global.__personalizeBotActivityMaintenanceTimer) {
 }
 
 module.exports = {
+  clearContact,
   markBotOutbound,
   getLastBotOutbound,
   purgeExpired,
