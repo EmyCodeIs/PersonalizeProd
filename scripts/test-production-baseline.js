@@ -37,9 +37,6 @@ function assertTrackedFile(item, group) {
   const absolute = path.join(ROOT, item.path);
   assert.ok(fs.existsSync(absolute), `${group}: arquivo ausente: ${item.path}`);
 
-  // Arquivos de runtime são texto e podem chegar como LF (Linux/GitHub) ou
-  // CRLF (Windows com core.autocrlf). Normalizamos somente as quebras de linha
-  // antes do hash. Assets continuam binários e precisam ser idênticos byte a byte.
   const currentHash = group === 'runtime' ? sha256Text(absolute) : sha256Binary(absolute);
   assert.strictEqual(
     currentHash,
@@ -52,7 +49,6 @@ function assertTrackedFile(item, group) {
   }
 }
 
-// Protege explicitamente a compatibilidade multiplataforma do próprio teste.
 assert.strictEqual(
   hashBuffer(Buffer.from(normalizeTextLineEndings('linha 1\nlinha 2\n'), 'utf8')),
   hashBuffer(Buffer.from(normalizeTextLineEndings('linha 1\r\nlinha 2\r\n'), 'utf8')),
@@ -90,7 +86,16 @@ assert.deepStrictEqual(
 );
 
 for (const [name, value] of Object.entries(manifest.invariants || {})) {
-  assert.strictEqual(value, false, `invariante inválida no baseline: ${name}`);
+  assert.strictEqual(value, false, `invariante legada inválida no baseline: ${name}`);
+}
+for (const [name, value] of Object.entries(manifest.preserved || {})) {
+  assert.strictEqual(value, true, `comportamento protegido deixou de estar preservado: ${name}`);
+}
+if (manifest.schemaVersion >= 3) {
+  assert.ok(
+    Array.isArray(manifest.approvedCorrections) && manifest.approvedCorrections.length > 0,
+    'baseline de correção precisa listar mudanças aprovadas',
+  );
 }
 
 console.log(

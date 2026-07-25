@@ -30,6 +30,9 @@ if (duplicateRemovalRequested && !duplicateRemovalConfirmed) {
   );
 }
 
+// Aguarda a sincronização real do WhatsApp antes de etiquetas, recuperação e pronto.
+require('./core/synchronizationGuardPreload');
+
 const serviceLabels = require('./core/serviceLabels');
 const { ensureRequiredLabelsOnce } = require('./core/requiredLabelsStartup');
 const { installIdempotentServiceLabels } = require('./core/idempotentServiceLabels');
@@ -79,6 +82,8 @@ require('./core/bufferStagePolicyPreload');
 // exata do vendedor para os aliases @lid e @c.us do mesmo contato.
 require('./core/vpsReadinessPreload');
 require('./core/sellerAliasHandoffPreload');
+// A identidade administrativa usada nos testes nunca entra em handoff por mensagens manuais.
+require('./core/testerHandoffBypassPreload');
 // Escuta a inclusão/remoção de etiqueta de vendedor mesmo após o fluxo concluído.
 require('./core/sellerLabelEventsPreload');
 

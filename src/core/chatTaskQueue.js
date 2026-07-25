@@ -42,6 +42,33 @@ class ChatTaskQueue {
     };
   }
 
+  cancelQueuedForChats(chatIds = [], code = 'QUEUE_CANCELLED') {
+    const selected = new Set(
+      (Array.isArray(chatIds) ? chatIds : [chatIds])
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    );
+    if (!selected.size) return 0;
+
+    const retained = [];
+    const cancelled = [];
+    for (const item of this.queue) {
+      if (selected.has(item.chatId)) cancelled.push(item);
+      else retained.push(item);
+    }
+    this.queue = retained;
+
+    for (const item of cancelled) {
+      if (item.publicSettled) continue;
+      item.publicSettled = true;
+      const error = new Error(`Tarefa cancelada: ${code}.`);
+      error.code = code;
+      error.chatId = item.chatId;
+      item.reject(error);
+    }
+    return cancelled.length;
+  }
+
   enqueue(chatId, task, options = {}) {
     const normalizedChatId = String(chatId || '').trim();
     if (!normalizedChatId) {

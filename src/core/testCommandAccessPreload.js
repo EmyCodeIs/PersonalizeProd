@@ -29,7 +29,7 @@ function installTestCommandAccessGuard() {
       }
 
       const command = firstLine(text).toLowerCase();
-      if (!env.enableTestCommands) {
+      if (!env.enableTestCommands && command !== '/resetarsys') {
         console.warn(`[COMANDO TESTE] ignorado porque ENABLE_TEST_COMMANDS=false | comando=${command}`);
         return undefined;
       }
