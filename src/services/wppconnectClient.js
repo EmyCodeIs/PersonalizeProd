@@ -5,6 +5,7 @@ const { env } = require('../config/env');
 const { applyNamedLabel } = require('../core/serviceLabels');
 const { OutboundTracker } = require('../core/outboundTracker');
 const { resolveBrowserArgs } = require('../core/vpsBrowserPreload');
+const { decision, decisionError } = require('../core/decisionLogger');
 const { publishConnected, publishQrCode, publishState } = require('./qrAccess');
 const { setQrAdminClient } = require('./qrAdminServer');
 
@@ -226,12 +227,14 @@ async function createWppChannel({ onMessage, onOutgoingMessage, onQr } = {}) {
   const client = await wppconnect.create({
     session: env.sessionName,
     catchQR: (base64Qr, asciiQR, attempts, urlCode) => {
+      decision('CONEXÃO', 'qr_disponível', { sessão: env.sessionName, tentativas: attempts, status: 'aguardando_leitura' });
       console.log('\n[WPPConnect] Escaneie o QR Code com o WhatsApp Business.\n');
       console.log(asciiQR);
       publishQrCode({ base64Qr, attempts, urlCode, connectionState: 'PAIRING' });
       if (typeof onQr === 'function') onQr({ base64Qr, asciiQR, attempts, urlCode });
     },
     statusFind: (statusSession, session) => {
+      decision('CONEXÃO', 'status_wppconnect', { sessão: session || env.sessionName, status: statusSession || '-' });
       console.log('[WPPConnect]', session, statusSession);
       publishState(String(statusSession || '').trim().toUpperCase(), `Status do WPPConnect: ${statusSession}`);
     },
@@ -338,6 +341,7 @@ async function createWppChannel({ onMessage, onOutgoingMessage, onQr } = {}) {
   };
 
   client.onStateChange((state) => {
+    decision('CONEXÃO', 'estado_alterado', { sessão: env.sessionName, status: state || '-' });
     console.log('[WPPConnect] estado:', state);
     const normalized = String(state || '').trim().toUpperCase();
     if (normalized.includes('CONNECTED') || normalized.includes('SYNCING') || normalized.includes('RESUMING')) {
@@ -360,8 +364,14 @@ async function createWppChannel({ onMessage, onOutgoingMessage, onQr } = {}) {
     const from = String(message?.from || message?.chatId || '').trim();
     const text = getMessageText(message) || getMediaMarker(message);
     if (!from || !text) return;
+    decision('CONEXÃO', 'evento_de_mensagem', { chat: from, tipo: message?.type || 'texto' });
     console.log(`[WPPConnect] mensagem recebida de ${from}`);
-    await onMessage?.({ from, text, raw: message, channel });
+    try {
+      await onMessage?.({ from, text, raw: message, channel });
+    } catch (error) {
+      decisionError('evento_de_mensagem_falhou', error, { chat: from });
+      throw error;
+    }
   });
 
   return channel;

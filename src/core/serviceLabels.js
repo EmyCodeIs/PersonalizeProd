@@ -3,6 +3,7 @@
 const { env } = require('../config/env');
 const Identity = require('../services/contactIdentity');
 const Store = require('../services/leadStore');
+const { decision, decisionError } = require('./decisionLogger');
 
 const resolvedLists = new Map();
 const creationLocks = new Map();
@@ -99,6 +100,7 @@ async function readBusinessLists(client) {
       }));
     });
   } catch (err) {
+    decisionError('leitura_de_etiquetas_falhou', err);
     console.warn('[LISTAS] não foi possível ler as listas:', err?.message || err);
     return [];
   }
@@ -324,6 +326,7 @@ async function ensureServiceList(client, target) {
     delayMs: 600,
   });
   if (existing) {
+    decision('ETIQUETA', 'localizada', { etiqueta: listName(existing), id: listId(existing), resultado: 'reutilizada' });
     console.log(`[LISTAS] reutilizando: ${listName(existing)} | ID ${listId(existing)}`);
     return existing;
   }
@@ -339,16 +342,19 @@ async function ensureServiceList(client, target) {
       });
       if (confirmed) return confirmed;
 
+      decision('ETIQUETA', 'criação_tentada', { etiqueta: target.name, cor: target.color, tentativa: `${attempt}/3` });
       console.log(`[LISTAS] criação ${attempt}/3: ${target.name} | cor=${target.color} | hex=${desiredHex(target.color)}`);
 
       let created = null;
       try {
         created = await createRealBusinessList(client, target);
       } catch (err) {
+        decisionError('criação_de_etiqueta_falhou', err, { etiqueta: target.name, tentativa: `${attempt}/3` });
         console.warn(`[LISTAS] erro ao criar "${target.name}":`, err?.message || err);
       }
 
       if (created?.ok) {
+        decision('ETIQUETA', 'criada', { etiqueta: created.name, id: created.id, confirmado: true });
         console.log(
           `[LISTAS] criada: ${created.name} | ID ${created.id} | `
           + `índice solicitado=${String(created.requestedColorIndex)} | índice final=${String(created.colorIndex)}`,
@@ -361,6 +367,11 @@ async function ensureServiceList(client, target) {
         });
         if (refreshed) return refreshed;
       } else {
+        decision('ETIQUETA', 'criação_não_confirmada', {
+          etiqueta: target.name,
+          tentativa: `${attempt}/3`,
+          motivo: created?.reason || 'sem_retorno',
+        }, 'warn');
         console.warn(
           `[LISTAS] tentativa ${attempt} falhou para "${target.name}": `
           + `${created?.reason || 'sem retorno'} ${created?.error || ''}`.trim(),
@@ -385,6 +396,7 @@ async function initializeServiceLabels(channel) {
   if (initializationPromise) return initializationPromise;
 
   initializationPromise = (async () => {
+    decision('ETIQUETA', 'manutenção_iniciada', { quantidade: serviceTargets().length });
     console.log('[LISTAS] verificando e criando separadamente as listas de atendimento...');
     await wait(1500);
 
@@ -393,14 +405,17 @@ async function initializeServiceLabels(channel) {
       const item = await ensureServiceList(channel.client, target);
       if (!item) {
         ready = false;
+        decision('ETIQUETA', 'ausente', { etiqueta: target.name, confirmado: false }, 'warn');
         console.warn(`[LISTAS] AUSENTE após 3 tentativas: ${target.name}`);
       } else {
+        decision('ETIQUETA', 'pronta', { etiqueta: listName(item), id: listId(item), cor: target.color, confirmado: true });
         console.log(`[LISTAS] PRONTA: ${listName(item)} | ID ${listId(item)} | cor=${target.color}`);
       }
       await wait(1600);
     }
 
     initializationFinished = true;
+    decision('ETIQUETA', 'manutenção_concluída', { resultado: ready ? 'ok' : 'parcial' });
     return ready;
   })().finally(() => {
     initializationPromise = null;
@@ -570,22 +585,33 @@ async function applyListToCandidates(client, clientId, item) {
 
 async function applyNamedLabel(channel, clientId, target) {
   if (!env.enableContactLabels || !channel?.client || !target?.name) return false;
+  decision('ETIQUETA', 'alvo_resolvido', { chat: clientId, etiqueta: target.name, cor: target.color || '-' });
 
   const client = channel.client;
   let item = await resolveExistingList(client, target);
   if (!item) item = await ensureServiceList(client, target);
 
   if (!item) {
+    decision('ETIQUETA', 'não_localizada', { chat: clientId, etiqueta: target.name, motivo: 'create_or_find_failed' }, 'warn');
     console.warn(`[LISTAS] não foi possível criar ou localizar "${target.name}".`);
     return false;
   }
 
   const result = await applyListToCandidates(client, clientId, item);
   if (!result?.applied) {
+    decision('ETIQUETA', 'aplicação_falhou', { chat: clientId, etiqueta: target.name, confirmado: false }, 'warn');
     console.warn(`[LISTAS] não foi possível incluir o contato em "${target.name}".`);
     return false;
   }
 
+  decision('ETIQUETA', 'aplicada', {
+    chat: result.chatId || clientId,
+    etiqueta: listName(item),
+    id: listId(item),
+    modo: result.mode,
+    confirmado: result.verified === true,
+    verificação: result.verified === null ? 'indisponível' : String(result.verified),
+  });
   console.log(
     `[LISTAS] aplicada sem remover outras: ${listName(item)} | ID ${listId(item)} `
     + `| ${result.chatId} | modo=${result.mode} | verificada=${String(result.verified)}`,

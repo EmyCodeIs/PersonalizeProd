@@ -1,5 +1,7 @@
 'use strict';
 
+const { decisionError } = require('./decisionLogger');
+
 function configuredConcurrentChats(fallback) {
   try {
     const { env } = require('../config/env');
@@ -129,6 +131,7 @@ class ChatTaskQueue {
           item.publicSettled = true;
           item.reject(error);
         } else {
+          decisionError('fila_falhou_após_timeout', error, { chat: item.chatId, tarefa: item.id });
           console.warn(
             `[QUEUE] tarefa ${item.id} do chat ${item.chatId} falhou depois do timeout:`,
             error?.message || error,

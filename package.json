@@ -7,9 +7,10 @@
   "scripts": {
     "start": "node src/start-with-required-labels.js",
     "dev": "node src/start-with-required-labels.js",
-    "test": "npm run check && npm run test:baseline && npm run test:business-config && npm run test:lettering-sequence && npm run test:readiness && npm run test:handoff && npm run test:seller-label-events && npm run test:exclusive-labels && npm run test:service-label-once && npm run test:seller-label-migration && npm run test:reset-handoff && npm run test:reset-labels && npm run test:commands && npm run test:catalog && npm run test:token-cache && npm run test:token-runtime && npm run test:browser-cache && npm run test:env && npm run storage:test && npm run test:vps-browser",
+    "test": "npm run check && npm run test:baseline && npm run test:decision-logs && npm run test:business-config && npm run test:lettering-sequence && npm run test:readiness && npm run test:handoff && npm run test:seller-label-events && npm run test:exclusive-labels && npm run test:service-label-once && npm run test:seller-label-migration && npm run test:reset-handoff && npm run test:reset-labels && npm run test:commands && npm run test:catalog && npm run test:token-cache && npm run test:token-runtime && npm run test:browser-cache && npm run test:env && npm run storage:test && npm run test:vps-browser",
     "check": "node scripts/check-syntax.js",
     "test:baseline": "node scripts/test-production-baseline.js",
+    "test:decision-logs": "node scripts/test-decision-logging.js",
     "test:flow": "node scripts/test-flow.js",
     "test:business-config": "node scripts/test-current-business-config.js",
     "test:lettering-sequence": "node scripts/test-lettering-flow-sequence.js",
