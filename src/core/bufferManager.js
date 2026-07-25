@@ -1,5 +1,7 @@
 'use strict';
 
+const { decisionError } = require('./decisionLogger');
+
 function normalizeBufferId(clientId) {
   const raw = String(clientId || '').trim();
   if (!raw) return '';
@@ -31,6 +33,7 @@ class BufferManager {
       this.map.delete(id);
       if (!current?.messages?.length) return;
       await this.onFlush(id, current.messages).catch((err) => {
+        decisionError('buffer_flush_falhou', err, { chat: id, quantidade: current.messages.length });
         console.error('[BUFFER] flush error:', err?.message || err);
       });
     }, effectiveDelay);
@@ -45,6 +48,7 @@ class BufferManager {
     const item = this.map.get(id);
     if (item?.timer) clearTimeout(item.timer);
     this.map.delete(id);
+    return Array.isArray(item?.messages) ? item.messages.length : 0;
   }
 }
 

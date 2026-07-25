@@ -1,8 +1,9 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "repository": "EmyCodeIs/PersonalizeProd",
   "productionBranch": "main",
   "productionCommit": "fe6ca12df261015fdca9a2df87caa608ac51c944",
+  "observabilityStage": "etapa-2",
   "package": {
     "name": "personalize-wppconnect-cliente-flow",
     "version": "0.7.3",
@@ -13,7 +14,7 @@
     {"path":"src/config/env.js","sha256":"755fa37c0e83b2a852d344c4145a090c372688bd51e0dc8db7c32783f25464b6"},
     {"path":"src/start-with-required-labels.js","sha256":"b276ae5055ae76c9c5b6b8dea97136d89bb30b13cc21ed2064271547fac094ec"},
     {"path":"src/bootstrap.js","sha256":"e093e0cb00e6d8e221681c07b08e91ab0387aace8fee105f122b8216b89c173f"},
-    {"path":"src/index.js","sha256":"a6ff8707a3d57ad1b90fda62fd4d86e8adaff2f0b9bae7c4c1efd639dfb719a4"},
+    {"path":"src/index.js","sha256":"d77f0d4220309a0c8faffa9e60e927b5e2acfc08a1993694c4a147c34c1fb2a7"},
     {"path":"src/core/messages.js","sha256":"535bdacc757993a16085966011c6c3f0c56f27be70ef20881ada10601d5ad5eb"},
     {"path":"src/core/menuCatalog.js","sha256":"cc492adfee379cf0b9eb42b675250f5daabb7f0529fb1ebae76dc467932239b1"},
     {"path":"src/core/mostruario.js","sha256":"b54ce6ae13d6a0cff13d0b37fd8973e7b60821b573224bbd1d1096cfb26f60dd"},
@@ -23,7 +24,13 @@
     {"path":"src/core/exactAcknowledgementPreload.js","sha256":"efd723af77c230e47cedea23c122d22fcff596c5a017c69183ae2209537d5515"},
     {"path":"src/core/supportLabelSelectionPreload.js","sha256":"5fca31dd08ce84d5c9796c67aa76455c9678bac75565f0438a69a176b8c99672"},
     {"path":"src/domain/acrilicoThickness.js","sha256":"844b22a5933315ca3fed7464291f6712a7936071de3e0b6e55d639a992f216aa"},
-    {"path":"src/flow/customerFlow.js","sha256":"d64ac97e904ddc2ad1b08019b0d47b7043304f00fe86b97770e7e798ac985947"}
+    {"path":"src/flow/customerFlow.js","sha256":"d64ac97e904ddc2ad1b08019b0d47b7043304f00fe86b97770e7e798ac985947"},
+    {"path":"src/core/decisionLogger.js","sha256":"0bd077f9fb0c4f71383bbea0e3f83c2487cdca6f4c8f4287d9e2dce63f456d32"},
+    {"path":"src/core/decisionChannelInstrumentation.js","sha256":"f42cbdd23c75a59a40473a6470659e49ffe9c57d2db7bff9406acc91571b4253"},
+    {"path":"src/core/bufferManager.js","sha256":"627ecb0aab73fbad48b076eb712eb8004e992d43b7a3d3d1c76b8dc70ac4f706"},
+    {"path":"src/core/chatTaskQueue.js","sha256":"d620a4f4f4635c7178ca122c7aa97a8bde4bc3bc3b3faba989f171a8b32a2e68"},
+    {"path":"src/core/serviceLabels.js","sha256":"96cf06411a7baee8fdb2ca6ac2e4e274e5acc44c930a87dd21a4b1ad60254728"},
+    {"path":"src/services/wppconnectClient.js","sha256":"e9381badc87e4a59de59bd42cf552e93172ef536e430fc5635f877e18d9c3431"}
   ],
   "protectedAssets": [
     {"path":"assets/.gitkeep","sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","size":0},

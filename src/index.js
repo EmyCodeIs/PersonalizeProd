@@ -9,6 +9,15 @@ const {
   collectUnreadMessages,
 } = require('./services/wppconnectClient');
 const { installMessageExperience } = require('./core/messageExperience');
+const { installDecisionChannelInstrumentation } = require('./core/decisionChannelInstrumentation');
+const {
+  decision,
+  decisionError,
+  messageContext,
+  metric,
+  textPreview,
+  withDecisionContext,
+} = require('./core/decisionLogger');
 const { isAllowedClient } = require('./core/allowedClient');
 const { extractName, normalizeText, titleCase } = require('./core/parsers');
 const {
@@ -524,6 +533,14 @@ function blockPdfSending(channel) {
 }
 
 async function main() {
+  const packageJson = require('../package.json');
+  decision('SISTEMA', 'inicialização', {
+    versão: packageJson.version,
+    base_commit: 'fe6ca12',
+    build: BUILD_ID,
+    storage: env.storageDriver || process.env.STORAGE_DRIVER || 'file',
+    sessão: env.sessionName,
+  });
   console.log('[PersonalizeWppConect] iniciando...');
   console.log(`[PersonalizeWppConect] BUILD: ${BUILD_ID}`);
   console.log(`[PersonalizeWppConect] buffer comum: ${env.bufferMs}ms`);
@@ -554,85 +571,191 @@ async function main() {
   const buffer = new BufferManager({
     delayMs: env.bufferMs,
     onFlush: async (clientId, bufferedMessages) => {
-      const guardBeforeQueue = await getAutomationBlock(channel, clientId);
-      if (guardBeforeQueue.blocked) {
-        console.log(`[HANDOFF] bloqueado antes da fila: ${clientId} | motivo=${guardBeforeQueue.reason} | vendedor=${guardBeforeQueue.seller || '-'} | etiqueta=${guardBeforeQueue.labelName || '-'}`);
-        buffer.clear(clientId);
-        return;
-      }
+      const lastBuffered = bufferedMessages[bufferedMessages.length - 1] || {};
+      const currentStage = String(Store.getSession(clientId)?.etapa || '').trim() || '-';
+      const trace = {
+        ...(lastBuffered.trace || messageContext({
+          raw: lastBuffered.raw,
+          chatId: clientId,
+          source: lastBuffered.source || 'buffer',
+          text: lastBuffered.text,
+          stage: currentStage,
+        })),
+        chat: clientId,
+        etapa: currentStage,
+        metrics: { outbound: 0, labels: 0, notes: 0 },
+      };
 
-      const text = mergeMessages(bufferedMessages);
-      if (!text) return;
-      const preparedText = prepareBufferedInput(clientId, text, bufferedMessages);
-      console.log(`\n[CLIENTE ${clientId}] ${preparedText}\n`);
+      return withDecisionContext(trace, async () => {
+        decision('BUFFER', 'liberado', {
+          quantidade: bufferedMessages.length,
+          espera: `${Number(lastBuffered.delayMs || 0)}ms`,
+        });
 
-      const units = estimateTaskUnits({ clientId, preparedText, bufferedMessages });
-      const queuedAt = Date.now();
-      evaluateRuntimePressure(taskQueue);
-      console.log(`[QUEUE] agendado chat=${clientId} units=${units} ${formatQueueStats(taskQueue.stats())}`);
-
-      try {
-        await taskQueue.enqueue(clientId, async () => {
-          evaluateRuntimePressure(taskQueue);
-          const guardBeforeRun = await getAutomationBlock(channel, clientId);
-          if (guardBeforeRun.blocked) {
-            console.log(`[HANDOFF] bloqueado antes do processamento: ${clientId} | motivo=${guardBeforeRun.reason} | vendedor=${guardBeforeRun.seller || '-'} | etiqueta=${guardBeforeRun.labelName || '-'}`);
-            return;
-          }
-
-          const waitMs = Date.now() - queuedAt;
-          console.log(`[QUEUE] iniciado chat=${clientId} units=${units} espera=${waitMs}ms ${formatQueueStats(taskQueue.stats())}`);
-
-          const action = () => processCustomerMessage({
-            clientId,
-            text: preparedText,
-            channel,
-            messages: bufferedMessages,
+        const guardBeforeQueue = await getAutomationBlock(channel, clientId);
+        if (guardBeforeQueue.blocked) {
+          decision('HANDOFF', 'bloqueado_antes_da_fila', {
+            status: 'bloqueado',
+            motivo: guardBeforeQueue.reason,
+            vendedor: guardBeforeQueue.seller || '-',
+            etiqueta: guardBeforeQueue.labelName || '-',
           });
+          decision('BUFFER', 'descartado', {
+            motivo: 'human_handoff',
+            quantidade: bufferedMessages.length,
+          });
+          buffer.clear(clientId);
+          return;
+        }
+        decision('HANDOFF', 'verificado_antes_da_fila', { status: 'livre' });
 
-          if (typeof channel?.runResponseGroup === 'function') {
-            await channel.runResponseGroup(clientId, preparedText, action);
-            return;
-          }
+        const text = mergeMessages(bufferedMessages);
+        if (!text) {
+          decision('BUFFER', 'ignorado', { motivo: 'conteúdo_vazio' });
+          return;
+        }
+        const preparedText = prepareBufferedInput(clientId, text, bufferedMessages);
+        console.log(`
+[CLIENTE ${clientId}] ${preparedText}
+`);
 
-          await action();
-        }, { units });
-
+        const units = estimateTaskUnits({ clientId, preparedText, bufferedMessages });
+        const queuedAt = Date.now();
         evaluateRuntimePressure(taskQueue);
-        console.log(`[QUEUE] concluído chat=${clientId} ${formatQueueStats(taskQueue.stats())}`);
-      } catch (err) {
-        evaluateRuntimePressure(taskQueue);
-        const reason = err?.code || 'QUEUE_ERROR';
-        console.warn(`[QUEUE] falha no chat ${clientId}: ${reason} - ${err?.message || err}`);
-        await channel?.markUnread?.(clientId).catch(() => false);
-      }
+        const statsBefore = taskQueue.stats();
+        decision('FILA', 'agendada', {
+          unidades: units,
+          posição: statsBefore.queued + 1,
+          execução: `${statsBefore.runningUnits}/${statsBefore.limit}`,
+        });
+
+        try {
+          await taskQueue.enqueue(clientId, async () => {
+            evaluateRuntimePressure(taskQueue);
+            const guardBeforeRun = await getAutomationBlock(channel, clientId);
+            if (guardBeforeRun.blocked) {
+              decision('HANDOFF', 'bloqueado_antes_do_processamento', {
+                status: 'bloqueado',
+                motivo: guardBeforeRun.reason,
+                vendedor: guardBeforeRun.seller || '-',
+                etiqueta: guardBeforeRun.labelName || '-',
+              });
+              decision('FLUXO', 'não_processado', { motivo: 'human_handoff' });
+              return;
+            }
+            decision('HANDOFF', 'verificado_antes_do_processamento', { status: 'livre' });
+
+            const waitMs = Date.now() - queuedAt;
+            const beforeSession = Store.getSession(clientId);
+            const beforeStage = String(beforeSession?.etapa || '').trim() || '-';
+            decision('FILA', 'iniciada', {
+              etapa: beforeStage,
+              unidades: units,
+              espera: `${waitMs}ms`,
+            });
+
+            const action = async () => {
+              const startedAt = Date.now();
+              decision('FLUXO', 'iniciado', { etapa: beforeStage, texto: textPreview(preparedText) });
+              try {
+                const result = await processCustomerMessage({
+                  clientId,
+                  text: preparedText,
+                  channel,
+                  messages: bufferedMessages,
+                });
+                const afterSession = Store.getSession(clientId);
+                const afterStage = String(afterSession?.etapa || '').trim() || '-';
+                decision('FLUXO', 'concluído', {
+                  de: beforeStage,
+                  para: afterStage,
+                  envios: metric('outbound'),
+                  respondeu: metric('outbound') > 0,
+                  duração: `${Date.now() - startedAt}ms`,
+                  resultado: afterSession?.completed ? 'concluído' : 'ativo',
+                });
+                return result;
+              } catch (error) {
+                decisionError('fluxo_falhou', error, {
+                  de: beforeStage,
+                  envios: metric('outbound'),
+                  duração: `${Date.now() - startedAt}ms`,
+                });
+                throw error;
+              }
+            };
+
+            if (typeof channel?.runResponseGroup === 'function') {
+              await channel.runResponseGroup(clientId, preparedText, action);
+              return;
+            }
+
+            await action();
+          }, { units });
+
+          evaluateRuntimePressure(taskQueue);
+          const statsAfter = taskQueue.stats();
+          decision('FILA', 'concluída', {
+            execução: `${statsAfter.runningUnits}/${statsAfter.limit}`,
+            pendentes: statsAfter.queued,
+          });
+        } catch (err) {
+          evaluateRuntimePressure(taskQueue);
+          const reason = err?.code || 'QUEUE_ERROR';
+          decisionError('fila_falhou', err, { motivo: reason });
+          await channel?.markUnread?.(clientId).catch(() => false);
+        }
+      });
     },
   });
 
   const onOutgoingMessage = async ({ from, text, raw, source = 'outgoing-event' }) => {
     const effectiveText = String(text || '').trim() || mediaMarker(raw);
-    const identity = Identity.registerContact({ chatId: from, raw });
-    const canonicalChatId = identity?.primaryChatId || from;
-    if (!canonicalChatId || /@g\.us$/i.test(canonicalChatId)) return;
+    const initialTrace = messageContext({ raw, chatId: from, source, text: effectiveText, stage: '-' });
 
-    const allowed = isAllowedClient({ from: canonicalChatId, raw });
-    if (!allowed.allowed) return;
+    return withDecisionContext(initialTrace, async () => {
+      const identity = Identity.registerContact({ chatId: from, raw });
+      const canonicalChatId = identity?.primaryChatId || from;
+      if (!canonicalChatId || /@g\.us$/i.test(canonicalChatId)) return;
 
-    const matchedBotMessage = channel?.outboundTracker?.consumeIfBot?.(canonicalChatId, raw);
-    if (matchedBotMessage) {
-      console.log(`[HANDOFF] saída do bot reconhecida: ${canonicalChatId} | tipo=${matchedBotMessage.type}`);
-      return;
-    }
+      decision('IDENTIDADE', 'resolvida_para_saída', {
+        chat: canonicalChatId,
+        original: from,
+        canônico: canonicalChatId,
+      });
 
-    registerManualTakeover(canonicalChatId, {
-      reason: 'manual_outbound_message',
-      source: 'manual_outbound_message',
-      blockedHours: env.humanBlockHours,
+      const allowed = isAllowedClient({ from: canonicalChatId, raw });
+      if (!allowed.allowed) {
+        decision('HANDOFF', 'saída_ignorada', { chat: canonicalChatId, motivo: 'fora_da_whitelist' });
+        return;
+      }
+
+      const matchedBotMessage = channel?.outboundTracker?.consumeIfBot?.(canonicalChatId, raw);
+      if (matchedBotMessage) {
+        decision('HANDOFF', 'saída_do_bot_reconhecida', {
+          chat: canonicalChatId,
+          status: 'livre',
+          tipo: matchedBotMessage.type,
+        });
+        return;
+      }
+
+      registerManualTakeover(canonicalChatId, {
+        reason: 'manual_outbound_message',
+        source: 'manual_outbound_message',
+        blockedHours: env.humanBlockHours,
+      });
+      const discarded = buffer.clear(canonicalChatId);
+
+      decision('HANDOFF', 'mensagem_humana_detectada', {
+        chat: canonicalChatId,
+        status: 'bloqueado',
+        motivo: 'manual_outbound_message',
+        origem: source,
+        texto: textPreview(effectiveText || '[sem texto]'),
+      });
+      if (discarded) decision('BUFFER', 'descartado', { chat: canonicalChatId, quantidade: discarded, motivo: 'human_handoff' });
     });
-    buffer.clear(canonicalChatId);
-
-    const preview = String(effectiveText || '[sem texto]').slice(0, 120);
-    console.log(`[HANDOFF] mensagem manual detectada em ${canonicalChatId} | origem=${source} | texto=${preview}`);
   };
 
   const onMessage = async ({ from, text, raw, source = 'event' }) => {
@@ -640,87 +763,158 @@ async function main() {
     const effectiveText = interactiveId || String(text || '').trim() || mediaMarker(raw);
     if (!effectiveText) return;
 
-    const profileName = extractProfileName(raw);
-    const identity = Identity.registerContact({ chatId: from, raw });
-    const canonicalChatId = identity?.primaryChatId || from;
+    const initialStage = String(Store.getSession(from)?.etapa || '').trim() || '-';
+    const trace = messageContext({ raw, chatId: from, source, text: effectiveText, stage: initialStage });
 
-    const allowed = isAllowedClient({ from: canonicalChatId, raw });
-    if (!allowed.allowed) {
-      console.log(`[PersonalizeWppConect] ignorado (${source}) fora da whitelist: ${canonicalChatId}`);
-      return;
-    }
+    return withDecisionContext(trace, async () => {
+      decision('ENTRADA', 'recebida', {
+        chat: from,
+        etapa: initialStage,
+        origem: source,
+        tipo: interactiveId ? 'interativa' : (mediaMarker(raw) ? 'mídia' : 'texto'),
+        texto: textPreview(effectiveText),
+      });
 
-    if (await runImmediateTestCommand(channel, canonicalChatId, effectiveText)) {
-      console.log(`[PersonalizeWppConect] comando imediato executado (${source}) em ${canonicalChatId}`);
-      buffer.clear(canonicalChatId);
-      return;
-    }
+      const profileName = extractProfileName(raw);
+      const identity = Identity.registerContact({ chatId: from, raw });
+      const canonicalChatId = identity?.primaryChatId || from;
+      const stage = String(Store.getSession(canonicalChatId)?.etapa || initialStage || '').trim() || '-';
+      Object.assign(trace, { chat: canonicalChatId, etapa: stage });
+      decision('IDENTIDADE', 'resolvida', {
+        chat: canonicalChatId,
+        etapa: stage,
+        original: from,
+        canônico: canonicalChatId,
+        aliases: Array.isArray(identity?.aliases) ? identity.aliases.length : undefined,
+      });
 
-    const guardBeforeBuffer = await getAutomationBlock(channel, canonicalChatId);
-    if (guardBeforeBuffer.blocked) {
-      console.log(`[HANDOFF] mensagem ignorada (${source}) em ${canonicalChatId} | motivo=${guardBeforeBuffer.reason} | vendedor=${guardBeforeBuffer.seller || '-'} | etiqueta=${guardBeforeBuffer.labelName || '-'}`);
-      buffer.clear(canonicalChatId);
-      return;
-    }
+      const allowed = isAllowedClient({ from: canonicalChatId, raw });
+      if (!allowed.allowed) {
+        decision('ENTRADA', 'ignorada', { chat: canonicalChatId, motivo: 'fora_da_whitelist' });
+        return;
+      }
 
-    await repairSessionServiceLabel(channel, canonicalChatId, repairedServiceLabels, 'primeira mensagem');
+      if (await runImmediateTestCommand(channel, canonicalChatId, effectiveText)) {
+        decision('ADMIN', 'comando_imediato_executado', {
+          chat: canonicalChatId,
+          ação: firstLine(effectiveText).toLowerCase(),
+          resultado: 'concluído',
+        });
+        const discarded = buffer.clear(canonicalChatId);
+        if (discarded) decision('BUFFER', 'descartado', { quantidade: discarded, motivo: 'admin_command' });
+        return;
+      }
 
-    const key = messageKey(raw || { from: canonicalChatId, text: effectiveText });
-    if (processedMessageIds.has(key)) return;
-    processedMessageIds.add(key);
-    if (processedMessageIds.size > 5000) {
-      const first = processedMessageIds.values().next().value;
-      processedMessageIds.delete(first);
-    }
+      const guardBeforeBuffer = await getAutomationBlock(channel, canonicalChatId);
+      if (guardBeforeBuffer.blocked) {
+        decision('HANDOFF', 'bloqueado_antes_do_buffer', {
+          chat: canonicalChatId,
+          status: 'bloqueado',
+          motivo: guardBeforeBuffer.reason,
+          vendedor: guardBeforeBuffer.seller || '-',
+          etiqueta: guardBeforeBuffer.labelName || '-',
+        });
+        const discarded = buffer.clear(canonicalChatId);
+        if (discarded) decision('BUFFER', 'descartado', { quantidade: discarded, motivo: 'human_handoff' });
+        decision('FLUXO', 'não_processado', { motivo: 'human_handoff' });
+        return;
+      }
+      decision('HANDOFF', 'verificado_antes_do_buffer', { chat: canonicalChatId, status: 'livre' });
 
-    const delayMs = resolveBufferDelay(canonicalChatId, raw, interactiveId);
-    const runtimeProtection = getRuntimeProtectionState();
-    console.log(
-      `[PersonalizeWppConect] mensagem enfileirada (${source}) de ${canonicalChatId}; espera=${delayMs}ms`
-      + `${interactiveId ? `; ação=${interactiveId}` : ''}`
-      + `${runtimeProtection.active ? `; autoproteção=${runtimeProtection.level}` : ''}`,
-    );
-    buffer.push(canonicalChatId, {
-      text: effectiveText,
-      raw,
-      source,
-      identity,
-      profileName,
-      interactiveId,
-    }, { delayMs });
+      decision('ETIQUETA', 'verificação_de_reparo', { chat: canonicalChatId, origem: 'primeira_mensagem' });
+      await repairSessionServiceLabel(channel, canonicalChatId, repairedServiceLabels, 'primeira mensagem');
+
+      const key = messageKey(raw || { from: canonicalChatId, text: effectiveText });
+      if (processedMessageIds.has(key)) {
+        decision('ENTRADA', 'ignorada', { chat: canonicalChatId, motivo: 'duplicada' });
+        return;
+      }
+      processedMessageIds.add(key);
+      if (processedMessageIds.size > 5000) {
+        const first = processedMessageIds.values().next().value;
+        processedMessageIds.delete(first);
+      }
+
+      const delayMs = resolveBufferDelay(canonicalChatId, raw, interactiveId);
+      const runtimeProtection = getRuntimeProtectionState();
+      decision('BUFFER', 'agendado', {
+        chat: canonicalChatId,
+        etapa: stage,
+        espera: `${delayMs}ms`,
+        ação: interactiveId || undefined,
+        autoproteção: runtimeProtection.active ? runtimeProtection.level : undefined,
+      });
+      buffer.push(canonicalChatId, {
+        text: effectiveText,
+        raw,
+        source,
+        identity,
+        profileName,
+        interactiveId,
+        delayMs,
+        trace: { ...trace, chat: canonicalChatId, etapa: stage },
+      }, { delayMs });
+    });
   };
 
   if (env.mockMode) {
-    channel = installMessageExperience(createMockChannel());
+    channel = installDecisionChannelInstrumentation(installMessageExperience(createMockChannel()));
     blockPdfSending(channel);
+    decision('CONEXÃO', 'mock_ativo', { status: 'pronto' });
     console.log('[PersonalizeWppConect] MOCK_MODE ativo.');
     return;
   }
 
+  decision('CONEXÃO', 'criando_canal', { sessão: env.sessionName });
   channel = await createWppChannel({ onMessage, onOutgoingMessage });
   blockPdfSending(channel);
   installMessageExperience(channel);
-  await initializeServiceLabels(channel).catch((err) => {
+  installDecisionChannelInstrumentation(channel);
+  decision('CONEXÃO', 'canal_criado', { status: 'conectado', sessão: env.sessionName });
+  decision('ETIQUETA', 'inicialização_iniciada', { origem: 'startup' });
+  await initializeServiceLabels(channel).then(() => {
+    decision('ETIQUETA', 'inicialização_concluída', { resultado: 'ok' });
+  }).catch((err) => {
+    decisionError('inicialização_de_etiquetas_falhou', err);
     console.warn('[LISTAS] preparação inicial falhou:', err?.message || err);
   });
-  await reconcileActiveServiceLists(channel, repairedServiceLabels).catch((err) => {
+  decision('RECUPERAÇÃO', 'reconciliação_de_etiquetas_iniciada', { origem: 'startup' });
+  await reconcileActiveServiceLists(channel, repairedServiceLabels).then((result) => {
+    decision('RECUPERAÇÃO', 'reconciliação_de_etiquetas_concluída', {
+      quantidade: result?.found || 0,
+      resultado: result?.skipped ? 'adiado' : 'ok',
+    });
+  }).catch((err) => {
+    decisionError('reconciliação_de_etiquetas_falhou', err);
     console.warn('[LISTAS] recuperação das sessões ativas falhou:', err?.message || err);
   });
-  await recoverPendingActiveSessions(channel, onMessage).catch((err) => {
+  decision('RECUPERAÇÃO', 'respostas_pendentes_iniciada', { origem: 'startup' });
+  await recoverPendingActiveSessions(channel, onMessage).then((result) => {
+    decision('RECUPERAÇÃO', 'respostas_pendentes_concluída', {
+      quantidade: result?.recovered || 0,
+      verificadas: result?.scanned || 0,
+      resultado: 'ok',
+    });
+  }).catch((err) => {
+    decisionError('respostas_pendentes_falhou', err);
     console.warn('[RETOMADA] recuperação de respostas pendentes falhou:', err?.message || err);
   });
+  decision('SISTEMA', 'pronto_para_mensagens', { status: 'pronto' });
   console.log('[PersonalizeWppConect] conectado. Aguardando mensagens...');
 
   if (env.enableUnreadBootstrap) {
     console.log(`[PersonalizeWppConect] buscando mensagens não lidas em ${env.unreadBootstrapDelayMs}ms...`);
     setTimeout(async () => {
       try {
+        decision('RECUPERAÇÃO', 'não_lidas_iniciada', { origem: 'unread_bootstrap' });
         const unread = await collectUnreadMessages(channel.client);
+        decision('RECUPERAÇÃO', 'não_lidas_encontradas', { quantidade: unread.length });
         console.log(`[PersonalizeWppConect] mensagens não lidas encontradas: ${unread.length}`);
         for (const item of unread) {
           await onMessage({ from: item.from, text: item.text, raw: item.raw, source: 'unread-bootstrap' });
         }
       } catch (err) {
+        decisionError('não_lidas_falhou', err);
         console.warn('[PersonalizeWppConect] não foi possível buscar mensagens não lidas:', err?.message || err);
       }
     }, env.unreadBootstrapDelayMs).unref?.();
@@ -728,6 +922,7 @@ async function main() {
 }
 
 main().catch((err) => {
+  decisionError('falha_fatal', err);
   console.error('[PersonalizeWppConect] erro fatal:', err?.stack || err?.message || err);
   process.exitCode = 1;
 });
