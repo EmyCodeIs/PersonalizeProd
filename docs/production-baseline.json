@@ -23,7 +23,7 @@
     {"path":"src/domain/acrilicoThickness.js","sha256":"844b22a5933315ca3fed7464291f6712a7936071de3e0b6e55d639a992f216aa"},
     {"path":"src/flow/customerFlow.js","sha256":"d64ac97e904ddc2ad1b08019b0d47b7043304f00fe86b97770e7e798ac985947"},
     {"path":"src/core/decisionLogger.js","sha256":"0bd077f9fb0c4f71383bbea0e3f83c2487cdca6f4c8f4287d9e2dce63f456d32"},
-    {"path":"src/core/decisionChannelInstrumentation.js","sha256":"f42cbdd23c75a59a40473a6470659e49ffe9c57d2db7bf9406acc91571b4253"}
+    {"path":"src/core/decisionChannelInstrumentation.js","sha256":"f42cbdd23c75a59a40473a6470659e49ffe9c57d2db7bff9406acc91571b4253"}
   ],
   "protectedAssets": [
     {"path":"assets/.gitkeep","sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","size":0},
