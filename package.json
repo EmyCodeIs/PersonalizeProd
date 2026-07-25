@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/start-with-required-labels.js",
     "dev": "node src/start-with-required-labels.js",
-    "test": "npm run check && npm run test:baseline && npm run test:decision-logs && npm run test:sync && npm run test:tester-runtime && npm run test:business-config && npm run test:lettering-sequence && npm run test:readiness && npm run test:handoff && npm run test:seller-label-events && npm run test:exclusive-labels && npm run test:service-label-once && npm run test:seller-label-migration && npm run test:reset-handoff && npm run test:reset-labels && npm run test:commands && npm run test:catalog && npm run test:token-cache && npm run test:token-runtime && npm run test:browser-cache && npm run test:env && npm run storage:test && npm run test:vps-browser",
+    "test": "npm run check && npm run test:baseline && npm run test:decision-logs && npm run test:sync && npm run test:tester-runtime && npm run test:handoff-policy && npm run test:business-config && npm run test:lettering-sequence && npm run test:readiness && npm run test:handoff && npm run test:seller-label-events && npm run test:exclusive-labels && npm run test:service-label-once && npm run test:seller-label-migration && npm run test:reset-handoff && npm run test:reset-labels && npm run test:commands && npm run test:catalog && npm run test:token-cache && npm run test:token-runtime && npm run test:browser-cache && npm run test:env && npm run storage:test && npm run test:vps-browser",
     "check": "node scripts/check-syntax.js",
     "test:baseline": "node scripts/test-production-baseline.js",
     "test:decision-logs": "node scripts/test-decision-logging.js",
@@ -49,7 +49,8 @@
     "test:browser-cache": "node scripts/test-browser-cache-runtime.js",
     "storage:seal-legacy": "node scripts/seal-legacy-data.js --apply",
     "test:sync": "node scripts/test-synchronization-guard.js",
-    "test:tester-runtime": "node scripts/test-tester-runtime.js"
+    "test:tester-runtime": "node scripts/test-tester-runtime.js",
+    "test:handoff-policy": "node scripts/test-handoff-policy.js && node scripts/test-handoff-history-policy.js"
   },
   "dependencies": {
     "@novnc/novnc": "^1.5.0",
