@@ -62,6 +62,8 @@ require('./core/resetCommandHandoffPreload');
 // Mantém os comandos ativos somente para os números/IDs administrativos
 // configurados separadamente da whitelist geral de atendimento.
 require('./core/testCommandAccessPreload');
+// Ausência de checkpoint e histórico anterior ao reset nunca viram handoff por inferência.
+require('./core/handoffHistoryPolicyPreload');
 require('./core/resetCleanupPreload');
 // Substitui a limpeza ampla antiga por uma limpeza que remove somente as
 // etiquetas gerenciadas, preservando as etiquetas manuais do contato.
@@ -82,6 +84,8 @@ require('./core/bufferStagePolicyPreload');
 // exata do vendedor para os aliases @lid e @c.us do mesmo contato.
 require('./core/vpsReadinessPreload');
 require('./core/sellerAliasHandoffPreload');
+// Consolida a política final: somente etiqueta externa nomeada ou saída humana confirmada bloqueiam.
+require('./core/handoffSafetyPreload');
 // A identidade administrativa usada nos testes nunca entra em handoff por mensagens manuais.
 require('./core/testerHandoffBypassPreload');
 // Escuta a inclusão/remoção de etiqueta de vendedor mesmo após o fluxo concluído.
