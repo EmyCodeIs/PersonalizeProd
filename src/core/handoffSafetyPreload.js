@@ -8,7 +8,7 @@ const SellerHandoff = require('./sellerHandoff');
 const SellerEvents = require('./sellerLabelEvents');
 const SellerAlias = require('./sellerAliasHandoffPreload');
 const TesterRuntime = require('./testerRuntime');
-const RuntimeReliability = require('./runtimeReliabilityPreload');
+const HistoryPolicy = require('./handoffHistoryPolicyPreload');
 const { OutboundTracker } = require('./outboundTracker');
 const { decision, decisionError } = require('./decisionLogger');
 const {
@@ -267,7 +267,9 @@ async function getAutomationBlock(channel, clientId) {
   }
 
   try {
-    const historical = await previousGetAutomationBlock(channel, clientId);
+    const historical = await HistoryPolicy.withHandoffHistoryBoundary(
+      () => previousGetAutomationBlock(channel, clientId),
+    );
     if (historical?.blocked && historical.reason === 'manual_outbound_history') {
       return activateHandoff(clientId, {
         reason: 'manual_outbound_history',
@@ -366,6 +368,17 @@ function wrapTrackedListMethod(channel, methodName, describe) {
     }
   };
   client[marker] = true;
+}
+
+function installUnreadHistoryBoundary() {
+  if (WppClient.__handoffUnreadHistoryBoundaryInstalled) return;
+  const originalCollectUnreadMessages = WppClient.collectUnreadMessages.bind(WppClient);
+  WppClient.collectUnreadMessages = function collectUnreadWithHandoffBoundary(client) {
+    return HistoryPolicy.withHandoffHistoryBoundary(
+      () => originalCollectUnreadMessages(client),
+    );
+  };
+  WppClient.__handoffUnreadHistoryBoundaryInstalled = true;
 }
 
 function installTransportSafety() {
@@ -477,7 +490,6 @@ function installTesterResetBoundary() {
   TesterRuntime.clearTesterConversationRuntime = function clearTesterWithHistoryBoundary(clientId, ...args) {
     const result = originalClear(clientId, ...args);
     const checkpoint = ResetStore.markReset(clientId, { reason: 'resetarsys' });
-    RuntimeReliability.clearHistoricalHumanGuardCache?.(clientId);
     invalidateLabelInspection(clientId);
     decision('ADMIN', 'resetarsys_marco_de_histórico', {
       chat: clientId,
@@ -493,6 +505,7 @@ installAliasAwareOutboundTracking();
 installCentralHandoffPolicy();
 installStrictLabelEvents();
 installTesterResetBoundary();
+installUnreadHistoryBoundary();
 installTransportSafety();
 
 module.exports = {
