@@ -10,6 +10,12 @@ const DISCONNECTED_STATES = new Set([
   'PHONENOTCONNECTED',
   'PHONE_NOT_CONNECTED',
 ]);
+const RETRYABLE_RECOVERY_CODES = new Set([
+  'WPP_RECOVERY_NOT_READY',
+  'WPP_STARTUP_GATE_CLOSED',
+  'WPP_SYNC_TIMEOUT',
+  'WPP_CONNECTION_TIMEOUT',
+]);
 
 function normalizeConnectionState(value) {
   return String(value || '').trim().toUpperCase();
@@ -21,6 +27,10 @@ function isConnectedState(value) {
 
 function isDisconnectedState(value) {
   return DISCONNECTED_STATES.has(normalizeConnectionState(value));
+}
+
+function isRetryableRecoveryError(error) {
+  return RETRYABLE_RECOVERY_CODES.has(String(error?.code || '').trim().toUpperCase());
 }
 
 function createReconnectTracker(onReconnect) {
@@ -45,7 +55,14 @@ function createReconnectTracker(onReconnect) {
   };
 }
 
-function createRecoveryRunner({ collectUnreadMessages, onMessage, getClient, delayMs, logger = console }) {
+function createRecoveryRunner({
+  collectUnreadMessages,
+  onMessage,
+  getClient,
+  delayMs,
+  retryDelayMs = delayMs,
+  logger = console,
+}) {
   let timer = null;
   let running = false;
   let rerunRequested = false;
@@ -90,6 +107,21 @@ function createRecoveryRunner({ collectUnreadMessages, onMessage, getClient, del
       logger.log(`[RECUPERAÇÃO][${source}] entregues à fila=${delivered}`);
       return { skipped: false, found: unread.length, delivered };
     } catch (error) {
+      if (isRetryableRecoveryError(error)) {
+        const retryIn = Math.max(1, Number(retryDelayMs || delayMs || 1000));
+        logger.warn(
+          `[RECUPERAÇÃO][${source}] WhatsApp ainda não está pronto; nova tentativa em ${retryIn}ms `
+          + `| motivo=${error.code}`,
+        );
+        schedule(source, retryIn);
+        return {
+          skipped: true,
+          reason: error.code,
+          retryScheduled: true,
+          retryIn,
+        };
+      }
+
       logger.warn(`[RECUPERAÇÃO][${source}] falhou:`, error?.message || error);
       return { skipped: false, error };
     } finally {
@@ -119,9 +151,11 @@ function createRecoveryRunner({ collectUnreadMessages, onMessage, getClient, del
 module.exports = {
   CONNECTED_STATES,
   DISCONNECTED_STATES,
+  RETRYABLE_RECOVERY_CODES,
   createReconnectTracker,
   createRecoveryRunner,
   isConnectedState,
   isDisconnectedState,
+  isRetryableRecoveryError,
   normalizeConnectionState,
 };
