@@ -6,26 +6,6 @@ const { clearHumanBlocks, clearTesterConversationRuntime } = require('./testerRu
 const { decision } = require('./decisionLogger');
 const { isTesterIdentity, isTestCommandAuthorized } = require('./testCommandAccess');
 
-function wait(ms) { return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms || 0)))); }
-
-async function waitForOperationalConnection(channel) {
-  const timeoutMs = Math.max(1000, Number(process.env.WPP_READINESS_TIMEOUT_MS || process.env.WPP_SYNC_READY_TIMEOUT_MS || 900000));
-  const pollMs = Math.max(100, Number(process.env.WPP_READINESS_POLL_MS || process.env.WPP_SYNC_POLL_MS || 1000));
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    let state = '';
-    try { state = String(await channel?.client?.getState?.() || '').trim().toUpperCase(); } catch (_) {}
-    if (!state && channel?.client?.page?.evaluate) {
-      try { state = String(await channel.client.page.evaluate(() => window.Store?.Stream?.mode || window.Store?.Stream?.state || '') || '').trim().toUpperCase(); } catch (_) {}
-    }
-    if (['CONNECTED', 'MAIN', 'NORMAL', 'INCHAT', 'IN_CHAT'].includes(state)) return state;
-    await wait(pollMs);
-  }
-  const error = new Error('WPP_CONNECTION_TIMEOUT');
-  error.code = 'WPP_CONNECTION_TIMEOUT';
-  throw error;
-}
-
 function textFromPayload(payload = {}) {
   return String(payload.text || payload?.raw?.body || payload?.raw?.caption || payload?.raw?.text || '').trim();
 }
@@ -95,8 +75,6 @@ function installTesterHandoffBypass() {
     };
 
     channelRef = await originalCreateWppChannel({ ...options, onMessage });
-    const state = await waitForOperationalConnection(channelRef);
-    decision('CONEXÃO', 'estado_operacional_confirmado', { status: state, sessão: process.env.WPP_SESSION_NAME || 'personalize-wppconnect' });
     return channelRef;
   };
 
@@ -105,4 +83,4 @@ function installTesterHandoffBypass() {
 
 installTesterHandoffBypass();
 
-module.exports = { installTesterHandoffBypass, isResetCommand, textFromPayload, waitForOperationalConnection };
+module.exports = { installTesterHandoffBypass, isResetCommand, textFromPayload };
