@@ -62,6 +62,8 @@ require('./core/resetCommandHandoffPreload');
 // Mantém os comandos ativos somente para os números/IDs administrativos
 // configurados separadamente da whitelist geral de atendimento.
 require('./core/testCommandAccessPreload');
+// Define a identidade estrita da tester e os marcos de histórico usados pelo handoff.
+require('./core/handoffHistoryPolicyPreload');
 require('./core/resetCleanupPreload');
 // Substitui a limpeza ampla antiga por uma limpeza que remove somente as
 // etiquetas gerenciadas, preservando as etiquetas manuais do contato.
@@ -82,9 +84,11 @@ require('./core/bufferStagePolicyPreload');
 // exata do vendedor para os aliases @lid e @c.us do mesmo contato.
 require('./core/vpsReadinessPreload');
 require('./core/sellerAliasHandoffPreload');
-// A identidade administrativa usada nos testes nunca entra em handoff por mensagens manuais.
+// Consolida a decisão final de etiquetas, mensagens manuais, histórico, fila e transporte.
+require('./core/handoffSafetyPreload');
+// Mantém somente o caminho antecipado e isolado do /resetarsys da tester.
 require('./core/testerHandoffBypassPreload');
-// Escuta a inclusão/remoção de etiqueta de vendedor mesmo após o fluxo concluído.
+// Escuta a inclusão/remoção de etiquetas também após o fluxo concluído.
 require('./core/sellerLabelEventsPreload');
 
 // As limpezas acontecem antes de o Chrome abrir. Durante a execução há apenas monitoramento.
