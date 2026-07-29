@@ -24,8 +24,38 @@ async function waitForOperationalConnection(channel, options = {}) {
   throw error;
 }
 
+function installIsolatedTesterCompatibility() {
+  // Na inicialização real, handoffSafetyPreload já instalou a política central.
+  // Este fallback existe somente para consumidores/testes que carregam este
+  // preload isoladamente e nunca substitui a política final de produção.
+  if (SellerHandoff.__centralHandoffPolicyInstalled || SellerHandoff.__isolatedTesterCompatibilityInstalled) return;
+
+  const originalGetAutomationBlock = SellerHandoff.getAutomationBlock.bind(SellerHandoff);
+  const originalRegisterManualTakeover = SellerHandoff.registerManualTakeover.bind(SellerHandoff);
+
+  SellerHandoff.getAutomationBlock = async function getAutomationBlockWithIsolatedTesterCompatibility(channel, clientId) {
+    if (Access.isTesterIdentity({ from: clientId })) {
+      const cleared = TesterRuntime.clearHumanBlocks(clientId);
+      return { blocked: false, reason: null, source: 'tester_identity', cleared };
+    }
+    return originalGetAutomationBlock(channel, clientId);
+  };
+
+  SellerHandoff.registerManualTakeover = function registerManualTakeoverWithIsolatedTesterCompatibility(clientId, payload = {}) {
+    if (Access.isTesterIdentity({ from: clientId })) {
+      const cleared = TesterRuntime.clearHumanBlocks(clientId);
+      return { bypassed: true, blocked: false, reason: 'tester_identity', cleared };
+    }
+    return originalRegisterManualTakeover(clientId, payload);
+  };
+
+  SellerHandoff.__isolatedTesterCompatibilityInstalled = true;
+}
+
 function installTesterHandoffBypass() {
   if (SellerHandoff.__testerHandoffBypassInstalled) return;
+
+  installIsolatedTesterCompatibility();
 
   const originalCreateWppChannel = WppClient.createWppChannel;
   WppClient.createWppChannel = async function createWppChannelWithTesterReset(options = {}) {
@@ -67,14 +97,13 @@ function installTesterHandoffBypass() {
     return channelRef;
   };
 
-  // A política final de tester e handoff pertence ao handoffSafetyPreload.
-  // Este preload mantém somente o caminho antecipado e isolado do /resetarsys.
   SellerHandoff.__testerHandoffBypassInstalled = true;
 }
 
 installTesterHandoffBypass();
 
 module.exports = {
+  installIsolatedTesterCompatibility,
   installTesterHandoffBypass,
   isResetCommand,
   textFromPayload,
