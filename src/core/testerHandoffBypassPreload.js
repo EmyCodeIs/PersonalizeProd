@@ -2,9 +2,9 @@
 
 const WppClient = require('../services/wppconnectClient');
 const SellerHandoff = require('./sellerHandoff');
-const { clearHumanBlocks, clearTesterConversationRuntime } = require('./testerRuntime');
+const TesterRuntime = require('./testerRuntime');
 const { decision } = require('./decisionLogger');
-const { isTesterIdentity, isTestCommandAuthorized } = require('./testCommandAccess');
+const Access = require('./testCommandAccess');
 
 function textFromPayload(payload = {}) {
   return String(payload.text || payload?.raw?.body || payload?.raw?.caption || payload?.raw?.text || '').trim();
@@ -17,27 +17,6 @@ function isResetCommand(payload = {}) {
 function installTesterHandoffBypass() {
   if (SellerHandoff.__testerHandoffBypassInstalled) return;
 
-  const originalGetAutomationBlock = SellerHandoff.getAutomationBlock.bind(SellerHandoff);
-  const originalRegisterManualTakeover = SellerHandoff.registerManualTakeover.bind(SellerHandoff);
-
-  SellerHandoff.getAutomationBlock = async function getAutomationBlockWithTesterBypass(channel, clientId) {
-    if (isTesterIdentity({ from: clientId })) {
-      const cleared = clearHumanBlocks(clientId);
-      decision('HANDOFF', 'tester_liberada', { chat: clientId, status: 'livre', motivo: 'tester_identity', bloqueios_limpos: cleared });
-      return { blocked: false, reason: null, source: 'tester_identity' };
-    }
-    return originalGetAutomationBlock(channel, clientId);
-  };
-
-  SellerHandoff.registerManualTakeover = function registerManualTakeoverWithTesterBypass(clientId, payload = {}) {
-    if (isTesterIdentity({ from: clientId })) {
-      const cleared = clearHumanBlocks(clientId);
-      decision('HANDOFF', 'mensagem_manual_da_tester_ignorada', { chat: clientId, status: 'livre', motivo: 'tester_identity', bloqueios_limpos: cleared });
-      return { bypassed: true, reason: 'tester_identity', cleared };
-    }
-    return originalRegisterManualTakeover(clientId, payload);
-  };
-
   const originalCreateWppChannel = WppClient.createWppChannel;
   WppClient.createWppChannel = async function createWppChannelWithTesterReset(options = {}) {
     const originalOnMessage = options.onMessage;
@@ -48,13 +27,13 @@ function installTesterHandoffBypass() {
         return typeof originalOnMessage === 'function' ? originalOnMessage(payload) : undefined;
       }
 
-      const access = isTestCommandAuthorized({ from: payload.from, raw: payload.raw });
+      const access = Access.isTestCommandAuthorized({ from: payload.from, raw: payload.raw });
       if (!access.allowed) {
         decision('ADMIN', 'resetarsys_negado', { chat: payload.from || '-', motivo: access.reason }, 'warn');
         return undefined;
       }
 
-      const cleanup = clearTesterConversationRuntime(payload.from);
+      const cleanup = TesterRuntime.clearTesterConversationRuntime(payload.from);
       decision('ADMIN', 'resetarsys_limpeza_local', {
         chat: payload.from,
         resultado: 'ok',
@@ -78,6 +57,8 @@ function installTesterHandoffBypass() {
     return channelRef;
   };
 
+  // A política final de tester e handoff pertence ao handoffSafetyPreload.
+  // Este preload mantém somente o caminho antecipado e isolado do /resetarsys.
   SellerHandoff.__testerHandoffBypassInstalled = true;
 }
 
