@@ -3,6 +3,7 @@
 const WppClient = require('../services/wppconnectClient');
 const SellerHandoff = require('./sellerHandoff');
 const TesterRuntime = require('./testerRuntime');
+const Synchronization = require('./synchronizationGuardPreload');
 const { decision } = require('./decisionLogger');
 const Access = require('./testCommandAccess');
 
@@ -12,6 +13,15 @@ function textFromPayload(payload = {}) {
 
 function isResetCommand(payload = {}) {
   return textFromPayload(payload).split(/\r?\n/)[0].trim().toLowerCase() === '/resetarsys';
+}
+
+async function waitForOperationalConnection(channel, options = {}) {
+  const result = await Synchronization.waitForOperationalConnection(channel, options);
+  if (result?.ready) return result.state;
+  const error = new Error(result?.reason || 'WPP_CONNECTION_TIMEOUT');
+  error.code = result?.reason || 'WPP_CONNECTION_TIMEOUT';
+  error.readiness = result;
+  throw error;
 }
 
 function installTesterHandoffBypass() {
@@ -64,4 +74,9 @@ function installTesterHandoffBypass() {
 
 installTesterHandoffBypass();
 
-module.exports = { installTesterHandoffBypass, isResetCommand, textFromPayload };
+module.exports = {
+  installTesterHandoffBypass,
+  isResetCommand,
+  textFromPayload,
+  waitForOperationalConnection,
+};
