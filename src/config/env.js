@@ -128,6 +128,9 @@ const env = {
   humanBlockHours: Math.max(1, num('HUMAN_BLOCK_HOURS', 24)),
   labelMaintenanceAutoRemoveDuplicates: bool('LABEL_MAINTENANCE_AUTO_REMOVE_DUPLICATES', false),
 
+  // A primeira entrada aguarda pelo menos 8s para agrupar saudação, nome e pedido.
+  // As demais respostas simples continuam usando BUFFER_MS.
+  firstInputBufferMs: Math.max(8000, num('FIRST_INPUT_BUFFER_MS', 8000)),
   // Entrada do cliente. O buffer curto atende respostas simples; o longo é usado
   // em medidas, arte, endereço, Pantone, suporte e observações com várias mensagens.
   bufferMs: Math.max(800, num('BUFFER_MS', 4500)),
@@ -190,9 +193,9 @@ const env = {
     process.env.MOSTRUARIO_LINK_URL
     || process.env.MOSTRUARIO_LETREIRO_LINK_URL
     || 'https://personalizeseuambiente.com.br/mostruario-letreiros',
-  assetTabelaCoresBaseName: process.env.ASSET_TABELA_CORES_BASENAME || 'tabela-cores-v2',
-  assetTabelaEspessuraBaseName: process.env.ASSET_TABELA_ESPESSURA_BASENAME || 'tabela-espessura',
-  assetTabelaProfundidadeBaseName: process.env.ASSET_TABELA_PROFUNDIDADE_BASENAME || 'tabela-profundidade-3mm',
+  assetTabelaCoresBaseName: process.env.ASSET_TABELA_CORES_BASE_NAME || 'tabela-cores-v2',
+  assetTabelaEspessuraBaseName: process.env.ASSET_TABELA_ESPESSURA_BASE_NAME || 'tabela-espessura',
+  assetTabelaProfundidadeBaseName: process.env.ASSET_TABELA_PROFUNDIDADE_BASE_NAME || 'tabela-profundidade-3mm',
 };
 
 if (env.maxReplyDelayMs < env.minReplyDelayMs) env.maxReplyDelayMs = env.minReplyDelayMs;
