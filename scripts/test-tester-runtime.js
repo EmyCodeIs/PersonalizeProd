@@ -46,6 +46,32 @@ async function run() {
 
   const tester = '18885055098907@lid';
   const other = '5531999999999@c.us';
+
+  let rawConfirmations = 0;
+  let guardedConfirmations = 0;
+  let trackerRegistrations = 0;
+  let trackerConfirmations = 0;
+  await TesterPreload.sendResetConfirmation({
+    client: {
+      async sendText(chatId, text) {
+        rawConfirmations += 1;
+        assert.equal(chatId, tester);
+        assert.equal(text, TesterPreload.RESET_CONFIRMATION);
+        return { id: 'reset-confirmation-id' };
+      },
+    },
+    outboundTracker: {
+      register() { trackerRegistrations += 1; return { token: 'reset-confirmation' }; },
+      confirm() { trackerConfirmations += 1; },
+      fail() { throw new Error('confirmação do reset não deveria falhar'); },
+    },
+    async sendText() { guardedConfirmations += 1; },
+  }, tester);
+  assert.equal(rawConfirmations, 1, 'confirmação autorizada deve usar somente o transporte direto');
+  assert.equal(guardedConfirmations, 0, 'confirmação não pode disputar com a trava normal de handoff');
+  assert.equal(trackerRegistrations, 1, 'confirmação precisa ser registrada como saída do bot');
+  assert.equal(trackerConfirmations, 1);
+
   Store.getSession(tester).etapa = 'cidade';
   Store.saveSession(Store.getSession(tester));
   Store.rememberCustomerProfile(tester, { name: 'Emilly' });
@@ -79,7 +105,7 @@ async function run() {
   SellerHandoff.registerManualTakeover(tester, { reason: 'manual_outbound_message' });
   assert.equal(HumanControl.getBlock(tester).blocked, true, 'nova intervenção após reset precisa bloquear novamente');
 
-  console.log('✅ Administrador verificado: testa handoff normalmente e /resetarsys limpa somente sua conversa.');
+  console.log('✅ Administrador verificado: testa handoff normalmente; reset corta o histórico e sua confirmação é isolada.');
 }
 
 run().catch((error) => {
