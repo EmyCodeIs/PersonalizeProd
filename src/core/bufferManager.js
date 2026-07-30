@@ -13,6 +13,14 @@ function configuredNumber(name, fallback, minimum = 1) {
   return Math.max(minimum, Number.isFinite(value) ? value : fallback);
 }
 
+function explicitOrConfigured(explicit, name, fallback, productionMinimum, explicitMinimum = 1) {
+  const value = Number(explicit);
+  if (explicit !== undefined && explicit !== null && Number.isFinite(value)) {
+    return Math.max(explicitMinimum, value);
+  }
+  return configuredNumber(name, fallback, productionMinimum);
+}
+
 function messageBytes(message = {}) {
   const fields = [
     message?.interactiveId,
@@ -37,17 +45,26 @@ class BufferManager {
   }) {
     this.delayMs = Math.max(500, Number(delayMs || 4500));
     this.onFlush = onFlush;
-    this.maxMessagesPerChat = Math.max(
+    this.maxMessagesPerChat = explicitOrConfigured(
+      maxMessagesPerChat,
+      'BUFFER_MAX_MESSAGES_PER_CHAT',
+      30,
       2,
-      Number(maxMessagesPerChat || configuredNumber('BUFFER_MAX_MESSAGES_PER_CHAT', 30, 2)),
+      1,
     );
-    this.maxBytesPerChat = Math.max(
+    this.maxBytesPerChat = explicitOrConfigured(
+      maxBytesPerChat,
+      'BUFFER_MAX_BYTES_PER_CHAT',
+      32768,
       4096,
-      Number(maxBytesPerChat || configuredNumber('BUFFER_MAX_BYTES_PER_CHAT', 32768, 4096)),
+      1,
     );
-    this.maxActiveChats = Math.max(
+    this.maxActiveChats = explicitOrConfigured(
+      maxActiveChats,
+      'BUFFER_MAX_ACTIVE_CHATS',
+      200,
       10,
-      Number(maxActiveChats || configuredNumber('BUFFER_MAX_ACTIVE_CHATS', 200, 10)),
+      1,
     );
     this.map = new Map();
   }
@@ -203,4 +220,10 @@ function mergeMessages(messages = []) {
     .join('\n');
 }
 
-module.exports = { BufferManager, mergeMessages, messageBytes, normalizeBufferId };
+module.exports = {
+  BufferManager,
+  explicitOrConfigured,
+  mergeMessages,
+  messageBytes,
+  normalizeBufferId,
+};
