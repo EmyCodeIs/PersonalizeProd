@@ -87,8 +87,8 @@ const TokenCache = require('./core/tokenCacheMaintenance');
 const BrowserCache = require('./core/browserCacheMaintenance');
 const Persistence = require('./services/persistence');
 const { startQrAdminServer } = require('./services/qrAdminServer');
-const { startFiscalModuleProcess } = require('./services/fiscalModuleProcess');
-const { startUnifiedPanelServer } = require('./services/unifiedPanelServer');
+const { startFiscalModuleProcess } = require('./modules/fiscal/process');
+const { startUnifiedPanelServer } = require('./modules/panel/server');
 
 TokenCache.runStartupTokenCacheMaintenance();
 TokenCache.startTokenCacheMonitor();
