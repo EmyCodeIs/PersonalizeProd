@@ -62,7 +62,8 @@ require('./core/resetCommandHandoffPreload');
 // Mantém os comandos ativos somente para os números/IDs administrativos
 // configurados separadamente da whitelist geral de atendimento.
 require('./core/testCommandAccessPreload');
-// Define a identidade estrita da tester e os marcos de histórico usados pelo handoff.
+// Define o corte contextual do histórico; o perfil administrador não recebe
+// imunidade de handoff e participa normalmente dos testes.
 require('./core/handoffHistoryPolicyPreload');
 require('./core/resetCleanupPreload');
 // Substitui a limpeza ampla antiga por uma limpeza que remove somente as
@@ -86,7 +87,8 @@ require('./core/vpsReadinessPreload');
 require('./core/sellerAliasHandoffPreload');
 // Consolida a decisão final de etiquetas, mensagens manuais, histórico, fila e transporte.
 require('./core/handoffSafetyPreload');
-// Mantém somente o caminho antecipado e isolado do /resetarsys da tester.
+// Trata somente o /resetarsys autorizado: limpa o estado atual e registra o
+// marco que faz o histórico anterior ser ignorado.
 require('./core/testerHandoffBypassPreload');
 // Escuta a inclusão/remoção de etiquetas também após o fluxo concluído.
 require('./core/sellerLabelEventsPreload');
