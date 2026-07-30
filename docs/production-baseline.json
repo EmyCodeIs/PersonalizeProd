@@ -4,7 +4,7 @@
   "productionBranch": "main",
   "productionCommit": "fe6ca12df261015fdca9a2df87caa608ac51c944",
   "observabilityStage": "etapa-2",
-  "correctionStage": "sincronizacao-etiquetas-handoff-seguro",
+  "correctionStage": "sincronizacao-handoff-runtime-banco-seguro",
   "package": {
     "name": "personalize-wppconnect-cliente-flow",
     "version": "0.7.3",
@@ -61,7 +61,8 @@
     "./core/sellerAliasHandoffPreload",
     "./core/handoffSafetyPreload",
     "./core/testerHandoffBypassPreload",
-    "./core/sellerLabelEventsPreload"
+    "./core/sellerLabelEventsPreload",
+    "./core/runtimeOptimizationPreload"
   ],
   "preserved": {
     "commercialMessages": true,
@@ -86,9 +87,15 @@
     "handoff_cancels_contact_buffer_and_queued_tasks",
     "handoff_rechecks_before_transport",
     "manual_history_after_bot_checkpoint_survives_restart",
-    "tester_manual_messages_do_not_activate_handoff",
+    "admin_profile_has_no_handoff_immunity",
     "resetarsys_allowed_for_authorized_tester_with_test_commands_disabled",
     "resetarsys_resets_only_tester_conversation",
-    "contact_aliases_reject_object_object"
+    "contact_aliases_reject_object_object",
+    "queue_timeout_releases_global_capacity_but_keeps_chat_lock",
+    "buffer_limits_flush_without_dropping_messages",
+    "expired_sessions_are_purged_periodically",
+    "handoff_caches_are_ttl_and_size_bounded",
+    "sqlite_quick_check_optimize_and_passive_checkpoint",
+    "identity_store_avoids_redundant_full_document_writes"
   ]
 }

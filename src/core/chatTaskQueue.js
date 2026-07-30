@@ -1,6 +1,6 @@
 'use strict';
 
-const { decisionError } = require('./decisionLogger');
+const { decision, decisionError } = require('./decisionLogger');
 
 function configuredConcurrentChats(fallback) {
   try {
@@ -28,13 +28,20 @@ class ChatTaskQueue {
     this.runningUnits = 0;
     this.queue = [];
     this.runningChats = new Set();
+    this.runningItems = new Map();
     this.sequence = 0;
   }
 
   stats() {
+    let timedOutTasks = 0;
+    for (const item of this.runningItems.values()) {
+      if (item.timedOut) timedOutTasks += 1;
+    }
     return {
       runningUnits: this.runningUnits,
       activeChats: this.runningChats.size,
+      runningTasks: this.runningItems.size,
+      timedOutTasks,
       queued: this.queue.length,
       limit: this.maxUnits,
       maxConcurrentChats: this.maxConcurrentChats,
@@ -69,6 +76,24 @@ class ChatTaskQueue {
     return cancelled.length;
   }
 
+  cancelRunningForChats(chatIds = [], code = 'QUEUE_RUNNING_CANCELLED') {
+    const selected = new Set(
+      (Array.isArray(chatIds) ? chatIds : [chatIds])
+        .map((item) => String(item || '').trim())
+        .filter(Boolean),
+    );
+    let signalled = 0;
+    for (const item of this.runningItems.values()) {
+      if (!selected.has(item.chatId) || item.controller.signal.aborted) continue;
+      const error = new Error(`Tarefa sinalizada para cancelamento: ${code}.`);
+      error.code = code;
+      error.chatId = item.chatId;
+      item.controller.abort(error);
+      signalled += 1;
+    }
+    return signalled;
+  }
+
   enqueue(chatId, task, options = {}) {
     const normalizedChatId = String(chatId || '').trim();
     if (!normalizedChatId) {
@@ -97,6 +122,10 @@ class ChatTaskQueue {
         resolve,
         reject,
         publicSettled: false,
+        unitsReleased: false,
+        chatReleased: false,
+        timedOut: false,
+        controller: new AbortController(),
       });
       this.processNext();
     });
@@ -113,38 +142,72 @@ class ChatTaskQueue {
       const item = this.queue.splice(index, 1)[0];
       this.runningUnits += item.units;
       this.runningChats.add(item.chatId);
+      this.runningItems.set(item.id, item);
       this.executeItem(item);
     }
   }
 
-  release(item) {
+  releaseUnits(item) {
+    if (item.unitsReleased) return;
+    item.unitsReleased = true;
     this.runningUnits = Math.max(0, this.runningUnits - item.units);
+  }
+
+  releaseChat(item) {
+    if (item.chatReleased) return;
+    item.chatReleased = true;
     this.runningChats.delete(item.chatId);
+  }
+
+  finishItem(item) {
+    this.releaseUnits(item);
+    this.releaseChat(item);
+    this.runningItems.delete(item.id);
+  }
+
+  timeoutItem(item) {
+    if (item.publicSettled) return;
+    item.publicSettled = true;
+    item.timedOut = true;
+
+    const error = new Error(`Timeout ao processar o chat ${item.chatId}.`);
+    error.code = 'QUEUE_TIMEOUT';
+    error.chatId = item.chatId;
+    error.taskId = item.id;
+
+    // Libera somente a capacidade global. O lock do chat e as tarefas seguintes
+    // permanecem preservados até a operação real terminar, sem perder mensagens.
+    this.releaseUnits(item);
+    item.controller.abort(error);
+    const waitingSameChat = this.queue.filter((queued) => queued.chatId === item.chatId).length;
+    item.reject(error);
+
+    decision('FILA', 'timeout_isolado', {
+      chat: item.chatId,
+      tarefa: item.id,
+      quantidade: waitingSameChat,
+      resultado: 'capacidade_global_liberada_chat_e_tarefas_preservados',
+    }, 'warn');
+    this.processNext();
   }
 
   executeItem(item) {
     let timeoutHandle = null;
 
     if (item.timeoutMs) {
-      timeoutHandle = setTimeout(() => {
-        if (item.publicSettled) return;
-        item.publicSettled = true;
-        const error = new Error(`Timeout ao processar o chat ${item.chatId}.`);
-        error.code = 'QUEUE_TIMEOUT';
-        error.chatId = item.chatId;
-        item.reject(error);
-      }, item.timeoutMs);
+      timeoutHandle = setTimeout(() => this.timeoutItem(item), item.timeoutMs);
       if (typeof timeoutHandle.unref === 'function') timeoutHandle.unref();
     }
 
-    // O chamador recebe o timeout no momento correto, mas o lock e as unidades
-    // permanecem ocupados até a tarefa real terminar. Isso impede duas tarefas do
-    // mesmo cliente de alterarem a sessão simultaneamente.
     Promise.resolve()
-      .then(() => item.task())
+      .then(() => item.task({
+        signal: item.controller.signal,
+        chatId: item.chatId,
+        taskId: item.id,
+      }))
       .then((result) => {
         if (timeoutHandle) clearTimeout(timeoutHandle);
-        this.release(item);
+        this.finishItem(item);
         if (!item.publicSettled) {
           item.publicSettled = true;
           item.resolve(result);
@@ -153,7 +216,7 @@ class ChatTaskQueue {
       })
       .catch((error) => {
         if (timeoutHandle) clearTimeout(timeoutHandle);
-        this.release(item);
+        this.finishItem(item);
         if (!item.publicSettled) {
           item.publicSettled = true;
           item.reject(error);
