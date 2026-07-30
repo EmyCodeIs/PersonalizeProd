@@ -17,17 +17,22 @@ if (!configuredWelcomeUrl || configuredWelcomeUrl === LEGACY_WELCOME_URL) {
   process.env.BEM_VINDOS_LINK_URL = INSTAGRAM_WELCOME_URL;
 }
 
-const duplicateRemovalRequested = ['1', 'true', 'yes', 'sim', 'on']
-  .includes(String(process.env.LABEL_MAINTENANCE_AUTO_REMOVE_DUPLICATES || '').trim().toLowerCase());
-const duplicateRemovalConfirmed = String(process.env.LABEL_MAINTENANCE_CONFIRM_DELETE || '').trim()
+const confirmedLabelDeletion = String(process.env.LABEL_MAINTENANCE_CONFIRM_DELETE || '').trim()
   === 'CONFIRMAR_EXCLUSAO';
+const automaticLabelCleanupFlags = [
+  ['LABEL_MAINTENANCE_AUTO_REMOVE_DUPLICATES', 'as duplicatas'],
+  ['LABEL_MAINTENANCE_AUTO_REMOVE_CORRUPT_SYMBOLS', 'as etiquetas corrompidas por símbolos'],
+];
 
-if (duplicateRemovalRequested && !duplicateRemovalConfirmed) {
-  process.env.LABEL_MAINTENANCE_AUTO_REMOVE_DUPLICATES = 'false';
-  console.warn(
-    '[LISTAS][SEGURANÇA] remoção automática solicitada, mas não confirmada; '
-    + 'as duplicatas serão somente auditadas.',
-  );
+for (const [flag, description] of automaticLabelCleanupFlags) {
+  const requested = ['1', 'true', 'yes', 'sim', 'on']
+    .includes(String(process.env[flag] || '').trim().toLowerCase());
+  if (requested && !confirmedLabelDeletion) {
+    process.env[flag] = 'false';
+    console.warn(
+      `[LISTAS][SEGURANÇA] remoção automática solicitada, mas não confirmada; ${description} serão somente auditadas.`,
+    );
+  }
 }
 
 // Aguarda a sincronização real do WhatsApp antes de etiquetas, recuperação e pronto.
@@ -51,6 +56,9 @@ require('./core/operationalLabelPolicyPreload');
 require('./core/exclusiveServiceLabelsPreload');
 // Impede reaplicações da mesma etiqueta durante o fluxo, finalização e reinícios.
 require('./core/serviceLabelAssignmentPreload');
+// Audita etiquetas globais com caracteres corrompidos e remove somente quando
+// a flag e a confirmação explícita estiverem configuradas.
+require('./core/corruptLabelMaintenance');
 
 // Instala o catálogo nativo. O catálogo aguarda estabilização; o texto seguinte
 // precisa ser confirmado pelo canal antes de a lista de acrílico ser liberada.
@@ -62,6 +70,9 @@ require('./core/resetCommandHandoffPreload');
 // Mantém os comandos ativos somente para os números/IDs administrativos
 // configurados separadamente da whitelist geral de atendimento.
 require('./core/testCommandAccessPreload');
+// Define o corte contextual do histórico; o perfil administrador não recebe
+// imunidade de handoff e participa normalmente dos testes.
+require('./core/handoffHistoryPolicyPreload');
 require('./core/resetCleanupPreload');
 // Substitui a limpeza ampla antiga por uma limpeza que remove somente as
 // etiquetas gerenciadas, preservando as etiquetas manuais do contato.
@@ -82,9 +93,12 @@ require('./core/bufferStagePolicyPreload');
 // exata do vendedor para os aliases @lid e @c.us do mesmo contato.
 require('./core/vpsReadinessPreload');
 require('./core/sellerAliasHandoffPreload');
-// A identidade administrativa usada nos testes nunca entra em handoff por mensagens manuais.
+// Consolida a decisão final de etiquetas, mensagens manuais, histórico, fila e transporte.
+require('./core/handoffSafetyPreload');
+// Trata somente o /resetarsys autorizado: limpa o estado atual e registra o
+// marco que faz o histórico anterior ser ignorado.
 require('./core/testerHandoffBypassPreload');
-// Escuta a inclusão/remoção de etiqueta de vendedor mesmo após o fluxo concluído.
+// Escuta a inclusão/remoção de etiquetas também após o fluxo concluído.
 require('./core/sellerLabelEventsPreload');
 
 // As limpezas acontecem antes de o Chrome abrir. Durante a execução há apenas monitoramento.

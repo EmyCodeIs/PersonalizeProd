@@ -1,0 +1,49 @@
+name: Etiquetas e handoff
+
+on:
+  pull_request:
+    branches:
+      - agent/fecha-sincronizacao-operacional
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci --no-audit --no-fund
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Sintaxe e baseline
+        run: |
+          npm run check
+          npm run test:baseline
+
+      - name: Sincronização
+        run: npm run test:sync
+
+      - name: Etiquetas e handoff
+        run: |
+          npm run test:handoff-policy
+          npm run test:handoff-history
+          npm run test:handoff
+          npm run test:seller-label-events
+          npm run test:exclusive-labels
+          npm run test:service-label-once
+
+      - name: Suíte completa
+        run: npm test
