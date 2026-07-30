@@ -11,8 +11,6 @@ const INSTAGRAM_WELCOME_URL = 'https://www.instagram.com/personalizeseuambiente?
 const LEGACY_WELCOME_URL = 'https://personalizeseuambiente.com.br/bem-vindos';
 const configuredWelcomeUrl = String(process.env.BEM_VINDOS_LINK_URL || '').trim();
 
-// Migra automaticamente o valor antigo. Um link diferente definido futuramente
-// no .env continua sendo respeitado.
 if (!configuredWelcomeUrl || configuredWelcomeUrl === LEGACY_WELCOME_URL) {
   process.env.BEM_VINDOS_LINK_URL = INSTAGRAM_WELCOME_URL;
 }
@@ -35,7 +33,6 @@ for (const [flag, description] of automaticLabelCleanupFlags) {
   }
 }
 
-// Aguarda a sincronização real do WhatsApp antes de etiquetas, recuperação e pronto.
 require('./core/synchronizationGuardPreload');
 
 const serviceLabels = require('./core/serviceLabels');
@@ -47,74 +44,41 @@ serviceLabels.initializeServiceLabels = ensureRequiredLabelsOnce;
 installIdempotentServiceLabels();
 installLidServiceLabelFix();
 
-// Garante que Letreiros, Plotagens, Outros e Suporte sejam sempre tratados
-// como o mesmo grupo operacional, mesmo com um .env antigo incompleto.
 require('./core/operationalLabelPolicyPreload');
-
-// Mantém somente uma etiqueta operacional. Etiquetas manuais e a etiqueta
-// exata do vendedor são preservadas.
 require('./core/exclusiveServiceLabelsPreload');
-// Impede reaplicações da mesma etiqueta durante o fluxo, finalização e reinícios.
 require('./core/serviceLabelAssignmentPreload');
-// Audita etiquetas globais com caracteres corrompidos e remove somente quando
-// a flag e a confirmação explícita estiverem configuradas.
 require('./core/corruptLabelMaintenance');
-
-// Instala o catálogo nativo. O catálogo aguarda estabilização; o texto seguinte
-// precisa ser confirmado pelo canal antes de a lista de acrílico ser liberada.
 require('./core/catalogMostruarioPreload');
 require('./core/handoffPreload');
-// Precisa carregar antes da proteção administrativa: comandos digitados pelo
-// próprio WhatsApp Business voltam ao processador sem ativar handoff.
 require('./core/resetCommandHandoffPreload');
-// Mantém os comandos ativos somente para os números/IDs administrativos
-// configurados separadamente da whitelist geral de atendimento.
 require('./core/testCommandAccessPreload');
-// Define o corte contextual do histórico; o perfil administrador não recebe
-// imunidade de handoff e participa normalmente dos testes.
 require('./core/handoffHistoryPolicyPreload');
 require('./core/resetCleanupPreload');
-// Substitui a limpeza ampla antiga por uma limpeza que remove somente as
-// etiquetas gerenciadas, preservando as etiquetas manuais do contato.
 require('./core/safeResetCleanupOverridePreload');
 require('./core/customerFlowFixPreload');
 require('./core/preferredSellerNotePreload');
 require('./core/completedFlowSilencePreload');
 require('./core/runtimeReliabilityPreload');
-// Reexecuta a recuperação segura quando o WhatsApp volta de uma desconexão.
 require('./core/unreadReconnectRecoveryPreload');
 require('./core/supportAndServicesPreload');
-// Aplica Suporte no momento da escolha, não apenas ao finalizar a coleta.
 require('./core/supportLabelSelectionPreload');
 require('./core/exactAcknowledgementPreload');
 require('./core/bufferStagePolicyPreload');
-
-// Primeiro instala as proteções gerais da VPS e, em seguida, amplia a leitura
-// exata do vendedor para os aliases @lid e @c.us do mesmo contato.
 require('./core/vpsReadinessPreload');
 require('./core/sellerAliasHandoffPreload');
-// Consolida a decisão final de etiquetas, mensagens manuais, histórico, fila e transporte.
 require('./core/handoffSafetyPreload');
-// Trata somente o /resetarsys autorizado: limpa o estado atual e registra o
-// marco que faz o histórico anterior ser ignorado.
 require('./core/testerHandoffBypassPreload');
-// Escuta a inclusão/remoção de etiquetas também após o fluxo concluído.
 require('./core/sellerLabelEventsPreload');
-// Limita buffers e caches, remove sessões expiradas e verifica o SQLite sem
-// excluir dados comerciais automaticamente.
 require('./core/runtimeOptimizationPreload');
-// Impede novas entradas durante encerramento, drena o trabalho existente e
-// publica liveness, readiness e health reais no servidor administrativo local.
 require('./core/gracefulHealthPreload');
-// Contatos com handoff persistente param antes de sessão, identidade, buffer e fila.
-// A liberação por etiqueta continua orientada por evento e é reconciliada uma vez no startup.
 require('./core/handoffSleepPreload');
 
-// As limpezas acontecem antes de o Chrome abrir. Durante a execução há apenas monitoramento.
 const TokenCache = require('./core/tokenCacheMaintenance');
 const BrowserCache = require('./core/browserCacheMaintenance');
 const Persistence = require('./services/persistence');
 const { startQrAdminServer } = require('./services/qrAdminServer');
+const { startFiscalModuleProcess } = require('./modules/fiscal/process');
+const { startUnifiedPanelServer } = require('./modules/panel/server');
 
 TokenCache.runStartupTokenCacheMaintenance();
 TokenCache.startTokenCacheMonitor();
@@ -122,8 +86,22 @@ BrowserCache.runStartupBrowserCacheMaintenance();
 BrowserCache.startBrowserCacheMonitor();
 startQrAdminServer();
 
+// O fiscal roda em processo filho: falhas da Focus ou do banco fiscal não derrubam o bot.
+try {
+  startFiscalModuleProcess();
+} catch (error) {
+  console.warn('[FISCAL] falha isolada ao iniciar:', error?.message || error);
+}
+
+// O painel apenas lê APIs locais e faz proxy autenticado para o fiscal.
+try {
+  startUnifiedPanelServer();
+} catch (error) {
+  console.warn('[PAINEL] falha isolada ao iniciar:', error?.message || error);
+}
+
 const storage = Persistence.storageInfo();
 if (storage.driver === 'sqlite') Persistence.getDatabase();
 console.log(`[BANCO] driver=${storage.driver} | criptografado=${storage.encrypted ? 'sim' : 'não'}`);
-console.log('[BUILD] personalize-vps-secure-sqlite-v1');
+console.log('[BUILD] personalize-bot-painel-fiscal-unificado-v1');
 require('./bootstrap');
