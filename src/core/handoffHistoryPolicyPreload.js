@@ -2,11 +2,7 @@
 
 const { AsyncLocalStorage } = require('async_hooks');
 const BotActivity = require('../services/botActivityStore');
-const HumanControl = require('../services/humanControlStore');
 const ResetStore = require('../services/handoffResetStore');
-const Access = require('./testCommandAccess');
-const { decision } = require('./decisionLogger');
-const { isStrictTesterIdentity } = require('./handoffPolicy');
 
 const historyContext = new AsyncLocalStorage();
 const STARTUP_BOUNDARY_AT = new Date().toISOString();
@@ -27,12 +23,6 @@ function withHandoffHistoryBoundary(action) {
   return historyContext.run({ handoffHistoryBoundary: true }, action);
 }
 
-function installStrictTesterIdentity() {
-  Access.isTesterIdentity = function isTesterIdentityStrict(payload = {}) {
-    return isStrictTesterIdentity(payload);
-  };
-}
-
 function installContextualHistoryBoundary() {
   if (BotActivity.__contextualHandoffBoundaryInstalled) return;
   const originalGetLastBotOutbound = BotActivity.getLastBotOutbound.bind(BotActivity);
@@ -48,9 +38,16 @@ function installContextualHistoryBoundary() {
       type: 'resetarsys_handoff_boundary',
       synthetic: true,
     } : null;
+
+    // Um checkpoint real do bot ou um /resetarsys persistente continua válido
+    // depois de reinícios. O mais recente define de onde o histórico pode ser
+    // considerado. Assim, mensagens humanas anteriores ao reset são ignoradas,
+    // mas qualquer intervenção posterior volta a ativar handoff normalmente.
     const knownBoundary = newestCheckpoint(actual, resetBoundary);
     if (knownBoundary) return knownBoundary;
 
+    // Apenas conversas sem qualquer checkpoint usam o início atual para não
+    // inferir handoff a partir de um histórico antigo e sem contexto.
     return {
       at: STARTUP_BOUNDARY_AT,
       messageId: null,
@@ -62,39 +59,11 @@ function installContextualHistoryBoundary() {
   BotActivity.__contextualHandoffBoundaryInstalled = true;
 }
 
-function installTesterBlockProtection() {
-  if (HumanControl.__strictTesterBlockProtectionInstalled) return;
-  const originalSetBlock = HumanControl.setBlock.bind(HumanControl);
-
-  HumanControl.setBlock = function setBlockExceptTester(clientId, payload = {}) {
-    if (isStrictTesterIdentity({ from: clientId })) {
-      try { HumanControl.clearBlock(clientId); } catch (_) {}
-      decision('HANDOFF', 'bloqueio_ignorado_para_tester', {
-        chat: clientId,
-        status: 'livre',
-        motivo: payload?.reason || 'handoff_candidate',
-      });
-      return {
-        bypassed: true,
-        reason: 'tester_identity',
-        blockedUntil: null,
-      };
-    }
-    return originalSetBlock(clientId, payload);
-  };
-
-  HumanControl.__strictTesterBlockProtectionInstalled = true;
-}
-
-installStrictTesterIdentity();
 installContextualHistoryBoundary();
-installTesterBlockProtection();
 
 module.exports = {
   STARTUP_BOUNDARY_AT,
   installContextualHistoryBoundary,
-  installStrictTesterIdentity,
-  installTesterBlockProtection,
   newestCheckpoint,
   withHandoffHistoryBoundary,
 };
