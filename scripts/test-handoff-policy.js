@@ -57,9 +57,8 @@ assert.equal(Policy.classifyLabelNames([{ name: 'Ana' }]).reason, 'seller_label'
 assert.equal(Policy.classifyLabelNames([{ name: 'Fornecedor' }]).reason, 'manual_label');
 assert.equal(Policy.classifyLabelNames([{ color: 'red' }, {}]).assigned, false);
 assert.equal(Policy.classifyLabelNames(['Suporte', 'Fornecedor']).reason, 'manual_label');
-assert.equal(Policy.isStrictTesterIdentity({ from: '18885055098907@lid' }), true);
-assert.equal(Policy.isStrictTesterIdentity({ from: '5531971386091@c.us' }), true);
-assert.equal(Policy.isStrictTesterIdentity({ from: '5531999999999@c.us' }), false);
+assert.equal(Policy.isStrictTesterIdentity({ from: '18885055098907@lid' }), false);
+assert.equal(Policy.isStrictTesterIdentity({ from: '5531971386091@c.us' }), false);
 
 const blocks = new Map();
 cacheStub('../src/services/humanControlStore', {
@@ -102,21 +101,37 @@ const SellerEvents = cacheStub('../src/core/sellerLabelEvents', {
 });
 
 const runtime = { buffers: new Set(), queues: new Set() };
+const checkpoints = new Map();
+const resetCheckpoints = new Map();
 let resetMarks = 0;
 const TesterRuntime = cacheStub('../src/core/testerRuntime', {
   _test: { runtime },
-  clearTesterConversationRuntime() { return { discardedBuffers: 0, cancelledTasks: 0, reset: { reset: true } }; },
+  clearTesterConversationRuntime(clientId) {
+    const key = Identity.getSessionKey(clientId);
+    const hadBlock = blocks.delete(key);
+    checkpoints.delete(key);
+    return {
+      discardedBuffers: 0,
+      cancelledTasks: 0,
+      blocksCleared: hadBlock ? 1 : 0,
+      activityCleared: 1,
+      reset: { reset: true },
+    };
+  },
 });
 cacheStub('../src/services/handoffResetStore', {
-  markReset(clientId) { resetMarks += 1; return { at: new Date().toISOString(), chatId: clientId }; },
+  markReset(clientId) {
+    resetMarks += 1;
+    const checkpoint = { at: new Date().toISOString(), chatId: clientId };
+    resetCheckpoints.set(Identity.getSessionKey(clientId), checkpoint);
+    return checkpoint;
+  },
+  getResetCheckpoint(clientId) {
+    return resetCheckpoints.get(Identity.getSessionKey(clientId)) || null;
+  },
 });
-
-const checkpoints = new Map();
 cacheStub('../src/services/botActivityStore', {
   getLastBotOutbound(clientId) { return checkpoints.get(Identity.getSessionKey(clientId)) || null; },
-});
-cacheStub('../src/core/handoffHistoryPolicyPreload', {
-  withHandoffHistoryBoundary(action) { return action(); },
 });
 cacheStub('../src/core/decisionLogger', { decision() {}, decisionError() {} });
 
@@ -149,6 +164,8 @@ const Safety = require('../src/core/handoffSafetyPreload');
 
 (async () => {
   const customer = '5531999999999@c.us';
+  const admin = '18885055098907@lid';
+
   labelState.set(customer, [{ name: 'Orçamento letreiros' }]);
   let guard = await SellerHandoff.getAutomationBlock(channel, customer);
   assert.equal(guard.blocked, false, 'etiqueta operacional não pode bloquear');
@@ -176,44 +193,70 @@ const Safety = require('../src/core/handoffSafetyPreload');
   );
 
   const created = await WppClient.createWppChannel();
-  await created.sendText('18885055098907@lid', 'reset ok');
-  await created.client.sendListMessage('18885055098907@lid', { title: 'Lista de teste' });
+  await created.sendText(admin, 'mensagem do bot');
+  await created.client.sendListMessage(admin, { title: 'Lista de teste' });
   assert.equal(listCalls, 1);
   const matchedList = tracker.consumeIfBot('5531971386091@c.us', {
     to: '5531971386091@c.us', type: 'list', body: 'Lista de teste',
   });
   assert.ok(matchedList, 'lista do bot precisa ser reconhecida entre aliases');
 
-  const historyCustomer = '5531888888888@c.us';
-  const botAt = Date.now() - 5000;
-  checkpoints.set(Identity.getSessionKey(historyCustomer), {
-    at: new Date(botAt).toISOString(), messageId: 'bot-1', type: 'text',
-  });
-  historyState.set(historyCustomer, [
-    { id: 'bot-1', fromMe: true, type: 'chat', body: 'Resposta do bot', timestamp: Math.floor(botAt / 1000) },
-    { id: 'human-1', fromMe: true, type: 'chat', body: 'Resposta manual', timestamp: Math.floor((botAt + 2500) / 1000) },
-  ]);
-  labelState.set(historyCustomer, []);
-  Safety.invalidateLabelInspection(historyCustomer);
-  Safety.invalidateHistoryInspection(historyCustomer);
-  guard = await SellerHandoff.getAutomationBlock(channel, historyCustomer);
-  assert.equal(guard.blocked, true, 'saída humana posterior ao checkpoint deve sobreviver ao reinício');
-  assert.equal(guard.reason, 'manual_outbound_history');
-
   const handler = SellerEvents.createSellerLabelUpdateHandler({ getChannel: () => created, delayMs: 0 });
   let event = await handler({
-    data: { chatId: '5531777777777@c.us', type: 'add', labels: [{ name: 'Suporte' }] }, channel: created,
+    data: { chatId: customer, type: 'add', labels: [{ name: 'Suporte' }] }, channel: created,
   });
   assert.equal(event.reason, 'MANAGED_SERVICE_LABEL');
+
   event = await handler({
-    data: { chatId: '18885055098907@lid', type: 'add', labels: [{ name: 'Fornecedor' }] }, channel: created,
+    data: { chatId: admin, type: 'add', labels: [{ name: 'Fornecedor' }] }, channel: created,
   });
-  assert.equal(event.reason, 'TESTER_IDENTITY');
+  assert.equal(event.assigned, true, 'perfil administrador precisa conseguir testar handoff por etiqueta');
+  assert.equal(event.guard.reason, 'manual_label');
+  assert.equal((await SellerHandoff.getAutomationBlock(channel, admin)).blocked, true);
 
-  TesterRuntime.clearTesterConversationRuntime('18885055098907@lid');
+  TesterRuntime.clearTesterConversationRuntime(admin);
   assert.equal(resetMarks, 1, 'reset deve gravar marco de histórico');
+  labelState.set(admin, []);
+  Safety.invalidateLabelInspection(admin);
+  Safety.invalidateHistoryInspection(admin);
+  guard = await SellerHandoff.getAutomationBlock(channel, admin);
+  assert.equal(guard.blocked, false, 'reset deve limpar o handoff atual do administrador');
 
-  console.log('✅ Etiquetas e handoff verificados: operacionais livres, externas/vendedor bloqueiam, histórico, fila, transporte, aliases e tester protegidos.');
+  const afterResetManual = SellerHandoff.registerManualTakeover(admin, { source: 'onAnyMessage' });
+  assert.equal(afterResetManual.blocked, true, 'nova mensagem manual após reset precisa reativar handoff');
+  TesterRuntime.clearTesterConversationRuntime(admin);
+  assert.equal(resetMarks, 2);
+
+  const resetAt = new Date(resetCheckpoints.get(Identity.getSessionKey(admin)).at).getTime();
+  historyState.set(admin, [
+    {
+      id: 'human-before-reset',
+      fromMe: true,
+      type: 'chat',
+      body: 'Mensagem antiga de vendedor',
+      timestamp: Math.floor((resetAt - 5000) / 1000),
+    },
+  ]);
+  Safety.invalidateHistoryInspection(admin);
+  guard = await SellerHandoff.getAutomationBlock(channel, admin);
+  assert.equal(guard.blocked, false, 'mensagem humana anterior ao /resetarsys deve ser ignorada');
+
+  historyState.set(admin, [
+    ...historyState.get(admin),
+    {
+      id: 'human-after-reset',
+      fromMe: true,
+      type: 'chat',
+      body: 'Nova intervenção manual',
+      timestamp: Math.floor((resetAt + 3000) / 1000),
+    },
+  ]);
+  Safety.invalidateHistoryInspection(admin);
+  guard = await SellerHandoff.getAutomationBlock(channel, admin);
+  assert.equal(guard.blocked, true, 'mensagem humana posterior ao /resetarsys deve ativar handoff');
+  assert.equal(guard.reason, 'manual_outbound_history');
+
+  console.log('✅ Etiquetas e handoff verificados: administrador testa handoff normalmente; /resetarsys corta apenas o histórico anterior.');
 })().catch((error) => {
   console.error(error?.stack || error);
   process.exitCode = 1;
