@@ -221,7 +221,9 @@ class BufferManager {
       bytes += Number(item?.bytes || 0);
     }
     return {
-      activeChats: this.map.size,
+      // Descargas em andamento continuam contando como trabalho ativo. Isso impede
+      // o encerramento de considerar o buffer vazio antes de onFlush realmente terminar.
+      activeChats: this.map.size + this.pendingFlushes.size,
       messages,
       bytes,
       pendingFlushes: this.pendingFlushes.size,
