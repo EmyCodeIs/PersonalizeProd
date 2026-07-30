@@ -31,6 +31,8 @@ for (const filename of ['.env.vps.example', '.env.vps.ready.example']) {
   assert.equal(parsed.BUFFER_MAX_ACTIVE_CHATS, '200');
   assert.equal(parsed.BUFFER_MAX_MESSAGES_PER_CHAT, '30');
   assert.equal(parsed.BUFFER_MAX_BYTES_PER_CHAT, '32768');
+  assert.equal(parsed.FIRST_INPUT_BUFFER_MS, '8000');
+  assert.equal(parsed.BUFFER_MS, '4500');
   assert.equal(parsed.IDENTITY_TOUCH_INTERVAL_MS, '300000');
   assert.equal(parsed.SESSION_ACCESS_HTTP_USER, 'personalize');
   assert.equal(parsed.SESSION_ACCESS_HTTP_PASSWORD, '2580');
@@ -41,4 +43,4 @@ for (const filename of ['.env.vps.example', '.env.vps.ready.example']) {
   assert.match(parsed.SESSION_ACCESS_PUBLIC_URL, /^https:\/\/__DOMAIN__\//);
 }
 
-console.log('✅ Ambiente VPS verificado: SQLite, retenção protegida, buffers limitados e cache seguro.');
+console.log('✅ Ambiente VPS verificado: SQLite, retenção protegida, primeiro input em 8s e cache seguro.');

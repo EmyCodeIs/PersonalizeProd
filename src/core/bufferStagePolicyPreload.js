@@ -12,7 +12,9 @@ if (!BufferManager.prototype.__stagePolicyInstalled) {
     const requestedDelay = Number(options.delayMs);
     let delayMs = options.delayMs;
 
-    if (stage === 'suporte_coleta') {
+    if (stage === 'inicio') {
+      delayMs = env.firstInputBufferMs;
+    } else if (stage === 'suporte_coleta') {
       delayMs = env.supportBufferMs;
     } else if (stage === 'plotagem_cidade' || stage === 'outros_cidade') {
       delayMs = env.cityBufferMs;
@@ -30,6 +32,6 @@ if (!BufferManager.prototype.__stagePolicyInstalled) {
   BufferManager.prototype.__stagePolicyInstalled = true;
 }
 
-console.log(`[BUFFER] política adicional ativa | suporte=${env.supportBufferMs}ms | cidade=${env.cityBufferMs}ms | observação=${env.observationBufferMs}ms`);
+console.log(`[BUFFER] política adicional ativa | primeiroInput=${env.firstInputBufferMs}ms | suporte=${env.supportBufferMs}ms | cidade=${env.cityBufferMs}ms | observação=${env.observationBufferMs}ms`);
 
 module.exports = {};

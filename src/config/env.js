@@ -128,6 +128,9 @@ const env = {
   humanBlockHours: Math.max(1, num('HUMAN_BLOCK_HOURS', 24)),
   labelMaintenanceAutoRemoveDuplicates: bool('LABEL_MAINTENANCE_AUTO_REMOVE_DUPLICATES', false),
 
+  // A primeira entrada aguarda pelo menos 8s para agrupar saudação, nome e pedido.
+  // As demais respostas simples continuam usando BUFFER_MS.
+  firstInputBufferMs: Math.max(8000, num('FIRST_INPUT_BUFFER_MS', 8000)),
   // Entrada do cliente. O buffer curto atende respostas simples; o longo é usado
   // em medidas, arte, endereço, Pantone, suporte e observações com várias mensagens.
   bufferMs: Math.max(800, num('BUFFER_MS', 4500)),
