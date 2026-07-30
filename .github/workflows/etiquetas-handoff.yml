@@ -5,6 +5,7 @@ on:
     branches:
       - agent/fecha-sincronizacao-operacional
       - agent/fecha-etiquetas-handoff
+      - agent/otimiza-runtime-banco
   workflow_dispatch:
 
 permissions:
@@ -37,11 +38,12 @@ jobs:
       - name: Sincronização
         run: npm run test:sync
 
-      - name: Runtime e banco
+      - name: Runtime, banco e health
         run: |
           npm run test:runtime-resources
           npm run test:identity-writes
           npm run test:storage-maintenance
+          npm run test:graceful-health
 
       - name: Etiquetas e handoff
         run: |
