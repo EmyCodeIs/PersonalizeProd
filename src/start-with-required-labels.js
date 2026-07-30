@@ -103,6 +103,9 @@ require('./core/sellerLabelEventsPreload');
 // Limita buffers e caches, remove sessões expiradas e verifica o SQLite sem
 // excluir dados comerciais automaticamente.
 require('./core/runtimeOptimizationPreload');
+// Impede novas entradas durante encerramento, drena o trabalho existente e
+// publica liveness, readiness e health reais no servidor administrativo local.
+require('./core/gracefulHealthPreload');
 
 // As limpezas acontecem antes de o Chrome abrir. Durante a execução há apenas monitoramento.
 const TokenCache = require('./core/tokenCacheMaintenance');
