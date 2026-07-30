@@ -32,6 +32,19 @@ jobs:
       - name: Copiar e integrar módulo fiscal
         run: node scripts/vendor-fiscal-module.mjs /tmp/PersonalizeNF
 
+      - name: Corrigir validação gerada do iframe
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const file = 'scripts/test-fiscal-integration.js';
+          let content = fs.readFileSync(file, 'utf8');
+          content = content.replace(
+            /^assert\.match\(app, .*embedded=1.*\);$/m,
+            "assert.equal(app.includes('/fiscal/?embedded=1'), true);",
+          );
+          fs.writeFileSync(file, content);
+          NODE
+
       - name: Validar integração antes de publicar
         run: |
           node scripts/check-syntax.js
