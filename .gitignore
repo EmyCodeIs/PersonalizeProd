@@ -3,6 +3,7 @@ node_modules/
 .wppconnect_auth/
 tokens/
 data/
+storage/fiscal-documents/
 npm-debug.log*
 .DS_Store
 *.zip

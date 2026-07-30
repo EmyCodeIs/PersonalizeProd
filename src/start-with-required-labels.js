@@ -115,6 +115,8 @@ const TokenCache = require('./core/tokenCacheMaintenance');
 const BrowserCache = require('./core/browserCacheMaintenance');
 const Persistence = require('./services/persistence');
 const { startQrAdminServer } = require('./services/qrAdminServer');
+const { startFiscalModuleProcess } = require('./modules/fiscal/process');
+const { startUnifiedPanelServer } = require('./modules/panel/server');
 
 TokenCache.runStartupTokenCacheMaintenance();
 TokenCache.startTokenCacheMonitor();
@@ -122,8 +124,23 @@ BrowserCache.runStartupBrowserCacheMaintenance();
 BrowserCache.startBrowserCacheMonitor();
 startQrAdminServer();
 
+// O fiscal roda em processo isolado: qualquer falha da Focus ou do banco fiscal
+// não encerra nem bloqueia o atendimento do WhatsApp.
+try {
+  startFiscalModuleProcess();
+} catch (error) {
+  console.warn('[FISCAL] falha isolada ao iniciar:', error?.message || error);
+}
+
+// O painel usa somente APIs locais. Falhas visuais nunca impedem o bot.
+try {
+  startUnifiedPanelServer();
+} catch (error) {
+  console.warn('[PAINEL] falha isolada ao iniciar:', error?.message || error);
+}
+
 const storage = Persistence.storageInfo();
 if (storage.driver === 'sqlite') Persistence.getDatabase();
 console.log(`[BANCO] driver=${storage.driver} | criptografado=${storage.encrypted ? 'sim' : 'não'}`);
-console.log('[BUILD] personalize-vps-secure-sqlite-v1');
+console.log('[BUILD] personalize-bot-painel-fiscal-unificado-v1');
 require('./bootstrap');
