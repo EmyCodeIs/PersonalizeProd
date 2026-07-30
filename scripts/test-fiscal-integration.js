@@ -40,8 +40,8 @@ assert.equal(fiscalConfig.documentDirectory.endsWith(path.join('storage', 'fisca
 
 const server = fs.readFileSync(path.join(root, 'src/modules/fiscal/server.js'), 'utf8');
 assert.match(server, /x-personalize-panel-secret/);
-assert.match(server, /\/api\/invoices\/\(\\d\+\)\/cancel/);
-assert.match(server, /\/api\/invoices\/\(\\d\+\)\/\(pdf\|xml\)/);
+assert.equal(server.includes("const cancelMatch = url.pathname.match(/^\\/api\\/invoices\\/(\\d+)\\/cancel$/);"), true);
+assert.equal(server.includes("const documentMatch = url.pathname.match(/^\\/api\\/invoices\\/(\\d+)\\/(pdf|xml)$/);"), true);
 
 const panel = fs.readFileSync(path.join(root, 'src/services/unifiedPanelServer.js'), 'utf8');
 assert.match(panel, /proxyFiscalRequest/);
