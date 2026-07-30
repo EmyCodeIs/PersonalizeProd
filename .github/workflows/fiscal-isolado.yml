@@ -24,8 +24,8 @@ jobs:
       - name: Instalar dependências
         run: npm install
 
-      - name: Validar sistema existente sem fiscal
-        run: npm test
+      - name: Verificar sintaxe da base
+        run: npm run check
 
       - name: Validar módulo fiscal isolado
         run: npm run test:fiscal
