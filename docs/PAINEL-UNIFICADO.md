@@ -8,38 +8,79 @@ Centralizar em uma única interface:
 - estado da conexão do WPPConnect;
 - QR Code e código de pareamento;
 - acesso ao mesmo Chrome compartilhado por noVNC;
-- módulo de emissão e gestão de NFS-e.
+- emissão e gestão de NFS-e.
 
-O painel visual pertence ao `PersonalizeProd`, mas os módulos continuam isolados internamente. Uma falha fiscal não pode interromper o atendimento do WhatsApp, e uma reconexão do bot não pode afetar o banco fiscal.
+O painel é único, mas o bot, o painel e o fiscal permanecem separados internamente. Uma falha fiscal não pode interromper o atendimento do WhatsApp.
 
-## Estado atual desta branch
+## Estrutura atual
+
+```text
+src/modules/panel/          backend, login, conexão e proxy
+public/panel/               interface principal
+src/modules/fiscal/         emissão, Focus, banco, PDF e XML
+public/fiscal/              interface fiscal incorporada
+```
+
+A divisão completa das áreas está em `docs/AREAS-DO-REPOSITORIO.md`.
+
+## Painel principal
 
 Implementado:
 
-- login único do painel;
-- identidade visual em preto e branco, com amarelo, vermelho e azul apenas como acentos;
+- login único;
+- identidade visual em preto e branco, com amarelo, vermelho e azul apenas como detalhes;
 - visão geral;
-- leitura do estado publicado em `data/qr-status/status.json`;
-- exibição do QR Code e código de pareamento;
-- botão para abrir o controle remoto existente;
-- ação administrativa de logout do WhatsApp usando o servidor local `qrAdminServer`;
-- servidor do painel isolado em `127.0.0.1:3030`;
-- falhas do painel não encerram o processo do bot;
-- testes de sintaxe e leitura do status.
+- leitura de `data/qr-status/status.json`;
+- QR Code e código de pareamento;
+- acesso ao controle remoto existente;
+- desconexão administrativa usando o `qrAdminServer`;
+- navegação para o módulo fiscal;
+- servidor local em `127.0.0.1:3030`.
 
-Ainda não migrado:
+## Módulo fiscal
 
-- banco e tabelas do PersonalizeNF;
+O núcleo completo do antigo `PersonalizeNF` está em `src/modules/fiscal/`.
+
+Inclui:
+
+- demonstração local;
+- homologação e produção separadas;
 - integração Focus;
 - emissão, consulta e cancelamento;
-- PDF e XML fiscais;
-- histórico de notas e rascunhos.
+- rascunhos e histórico;
+- banco SQLite fiscal próprio;
+- PDF e XML;
+- webhook opcional;
+- proteção para impedir produção acidental.
 
-Até essa migração terminar, o repositório `PersonalizeNF` deve ser preservado e não deve ser apagado.
+O módulo fiscal roda em processo isolado:
+
+```text
+127.0.0.1:3031
+```
+
+O usuário acessa apenas:
+
+```text
+http://127.0.0.1:3030
+```
+
+O painel encaminha as rotas `/fiscal/*` internamente e não expõe diretamente a porta fiscal.
+
+## Dados separados
+
+```text
+Bot:
+  persistência operacional atual do PersonalizeProd
+
+Fiscal:
+  data/fiscal/personalize-nf.sqlite
+  storage/fiscal-documents/
+```
+
+O banco fiscal nunca deve ser misturado às tabelas de atendimento.
 
 ## Configuração
-
-O painel usa as variáveis abaixo:
 
 ```env
 UNIFIED_PANEL_ENABLED=true
@@ -49,26 +90,41 @@ PANEL_ADMIN_EMAIL=contato@personalizeseuambiente.com.br
 PANEL_ADMIN_PASSWORD=troque-por-uma-senha-forte
 PANEL_SESSION_SECRET=use-uma-chave-aleatoria-com-32-ou-mais-caracteres
 
-# Dados já existentes do bot
 QR_STATUS_JSON=data/qr-status/status.json
 QR_ADMIN_HOST=127.0.0.1
 QR_ADMIN_PORT=3210
 SESSION_ACCESS_PUBLIC_URL=
 
-# Temporário durante a migração fiscal
-FISCAL_PANEL_URL=
-FISCAL_MIGRATION_STATE=preparando
+FISCAL_MODULE_ENABLED=true
+FISCAL_INTERNAL_HOST=127.0.0.1
+FISCAL_INTERNAL_PORT=3031
+FISCAL_DATA_DIRECTORY=./data/fiscal
+FISCAL_DOCUMENT_DIRECTORY=./storage/fiscal-documents
 ```
 
-Compatibilidade:
+As variáveis da Focus, empresa e serviços permanecem no mesmo `.env`, mas são consumidas somente pelo módulo fiscal.
 
-- se `PANEL_ADMIN_PASSWORD` estiver vazio, o sistema tenta `ADMIN_PASSWORD` e depois `SESSION_ACCESS_PASSWORD`;
-- se `PANEL_ADMIN_EMAIL` estiver vazio, usa `ADMIN_EMAIL` ou o e-mail padrão da Personalize;
-- se `PANEL_SESSION_SECRET` estiver vazio, uma chave temporária é gerada ao iniciar. Nesse caso, o login expira quando o processo reinicia.
+## Migração local do antigo PersonalizeNF
+
+Feche os dois sistemas antes de copiar os dados:
+
+```powershell
+.\scripts\migrate-fiscal-local.ps1 -SourcePath "C:\Users\Admin\Desktop\PersonalizeNF"
+```
+
+O script copia localmente:
+
+- banco e histórico;
+- PDF e XML;
+- configurações fiscais;
+- tokens da Focus;
+- credenciais do painel quando ainda não existirem.
+
+Nenhum `.env`, token, banco ou documento é enviado ao GitHub.
 
 ## Acesso local
 
-```bash
+```powershell
 npm install
 npm start
 ```
@@ -81,47 +137,26 @@ http://127.0.0.1:3030
 
 ## Publicação na VPS
 
-O servidor deve continuar em `127.0.0.1:3030` e ser publicado pelo Nginx com HTTPS. O noVNC continua separado em `127.0.0.1:6080`.
-
-Arquitetura recomendada:
+Arquitetura prevista:
 
 ```text
 Nginx / HTTPS
-  ├─ /              → Painel unificado :3030
+  ├─ /              → painel unificado :3030
   └─ /whatsapp/     → noVNC :6080
 
-Processo do bot
-  ├─ WPPConnect
+Processo principal
+  ├─ bot e WPPConnect
   ├─ qrAdminServer :3210 somente local
-  └─ painel unificado :3030 somente local
+  ├─ painel :3030 somente local
+  └─ fiscal :3031 somente local e isolado
 ```
 
-## Migração fiscal recomendada
+## Regra de desenvolvimento paralelo
 
-1. Copiar o núcleo fiscal para `src/modules/fiscal`.
-2. Manter um arquivo SQLite fiscal próprio dentro de `data/fiscal/`.
-3. Reutilizar o login do painel unificado.
-4. Montar as rotas fiscais em `/api/fiscal/*`.
-5. Mover a interface de notas para a navegação atual.
-6. Validar demonstração local.
-7. Validar homologação real da Focus.
-8. Somente depois ativar produção.
+Mudanças deste painel devem ficar na branch:
 
-A migração não deve reutilizar diretamente as tabelas operacionais do bot. O painel é único; os dados e responsabilidades continuam separados.
-
-
-## Módulo fiscal integrado
-
-O núcleo completo do antigo PersonalizeNF agora está versionado em `src/modules/fiscal` e é iniciado automaticamente como processo local isolado. O painel principal faz proxy autenticado em `/fiscal/`, portanto não existe segundo login nem exposição direta da porta interna.
-
-- banco fiscal: `data/fiscal/personalize-nf.sqlite`;
-- documentos: `storage/fiscal-documents`;
-- processo interno: `127.0.0.1:3031`;
-- entrada única: painel em `127.0.0.1:3030`;
-- falha fiscal não encerra o bot.
-
-Para trazer banco, documentos e configurações locais do projeto antigo no Windows:
-
-```powershell
-.\scripts\migrate-fiscal-local.ps1
+```text
+agent/painel-unificado-personalize
 ```
+
+Trabalhos de fluxo, mensagens, handoff, etiquetas, fila, buffer e sessão devem usar outra branch e não alterar `src/modules/panel`, `src/modules/fiscal`, `public/panel` ou `public/fiscal`.
