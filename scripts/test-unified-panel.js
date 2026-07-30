@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { readConnectionSnapshot } = require('../src/services/unifiedPanelServer');
+const { readConnectionSnapshot } = require('../src/modules/panel/server');
 
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'personalize-panel-'));
 const statusPath = path.join(temporaryDirectory, 'status.json');
