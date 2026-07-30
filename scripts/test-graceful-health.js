@@ -4,12 +4,13 @@ const assert = require('assert/strict');
 const http = require('http');
 
 process.env.STORAGE_DRIVER = 'file';
-process.env.GRACEFUL_SHUTDOWN_TIMEOUT_MS = '1500';
+process.env.GRACEFUL_SHUTDOWN_TIMEOUT_MS = '1800';
 process.env.HEALTH_RSS_CRITICAL_MB = '4096';
 process.env.HEALTH_QUEUE_CRITICAL_SIZE = '20';
 
 const Lifecycle = require('../src/core/runtimeLifecycle');
 const TesterRuntime = require('../src/core/testerRuntime');
+const { BufferManager } = require('../src/core/bufferManager');
 const {
   closeQrAdminServer,
   startQrAdminServer,
@@ -86,46 +87,20 @@ async function testGracefulDrain() {
   runtime.buffers.clear();
   runtime.queues.clear();
 
-  let queueRunning = 0;
-  let queueFinished = false;
-  const queue = {
-    queue: [],
-    runningItems: new Map(),
-    stats() {
-      return {
-        queued: 0,
-        activeChats: queueRunning ? 1 : 0,
-        runningTasks: queueRunning,
-        timedOutTasks: 0,
-      };
+  let flushStarted = false;
+  let flushFinished = false;
+  const buffer = new BufferManager({
+    delayMs: 10000,
+    maxMessagesPerChat: 5,
+    maxBytesPerChat: 4096,
+    maxActiveChats: 5,
+    onFlush: async () => {
+      flushStarted = true;
+      await wait(500);
+      flushFinished = true;
     },
-    cancelQueuedForChats() { return 0; },
-    cancelRunningForChats() { return 0; },
-  };
-
-  const buffer = {
-    map: new Map([['chat-teste', { messages: [{ text: 'oi' }] }]]),
-    stats() {
-      return {
-        activeChats: this.map.size,
-        messages: this.map.size,
-        bytes: this.map.size * 2,
-      };
-    },
-    _flush(id) {
-      if (!this.map.has(id)) return 0;
-      this.map.delete(id);
-      queueRunning = 1;
-      setTimeout(() => {
-        queueRunning = 0;
-        queueFinished = true;
-      }, 80).unref?.();
-      return 1;
-    },
-  };
-
-  runtime.buffers.add(buffer);
-  runtime.queues.add(queue);
+  });
+  buffer.push('chat-teste', { text: 'oi' });
 
   let whatsappClosed = 0;
   let auxiliaryClosed = 0;
@@ -144,10 +119,15 @@ async function testGracefulDrain() {
   const before = await Lifecycle.healthSnapshot();
   assert.equal(before.ok, false, 'sem API do WhatsApp real, health deve recusar falso positivo');
 
-  const result = await Lifecycle.gracefulShutdown({ signal: 'TEST', timeoutMs: 1200 });
+  const startedAt = Date.now();
+  const result = await Lifecycle.gracefulShutdown({ signal: 'TEST', timeoutMs: 1600 });
+  const elapsed = Date.now() - startedAt;
+
   assert.equal(result.forced, false);
   assert.equal(result.flushedMessages, 1);
-  assert.equal(queueFinished, true, 'o encerramento deve esperar a tarefa iniciada pelo buffer');
+  assert.equal(flushStarted, true);
+  assert.equal(flushFinished, true, 'o encerramento deve aguardar toda a rotina assíncrona de onFlush');
+  assert.ok(elapsed >= 500, 'não pode considerar o buffer vazio antes da descarga terminar');
   assert.equal(whatsappClosed, 1, 'deve fechar o Chrome sem executar logout');
   assert.equal(auxiliaryClosed, 1);
   assert.equal(Lifecycle.isAcceptingMessages(), false);
