@@ -45,7 +45,10 @@
     "vps:prepare": "node scripts/prepare-vps-env.js",
     "vps:deploy": "bash scripts/deploy-vps-ready.sh",
     "test:browser-cache": "node scripts/test-browser-cache-runtime.js",
-    "storage:seal-legacy": "node scripts/seal-legacy-data.js --apply"
+    "storage:seal-legacy": "node scripts/seal-legacy-data.js --apply",
+    "fiscal:start": "node src/modules/fiscal/index.js",
+    "test:fiscal": "node scripts/test-fiscal-integration.js",
+    "fiscal:focus:check": "node scripts/check-focus-homologacao-real.js"
   },
   "dependencies": {
     "@novnc/novnc": "^1.5.0",
