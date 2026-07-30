@@ -1,0 +1,31 @@
+name: Módulo fiscal isolado
+
+on:
+  push:
+    branches:
+      - agent/painel-unificado-personalize
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: 'true'
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Instalar dependências
+        run: npm install
+
+      - name: Validar sistema existente sem fiscal
+        run: npm test
+
+      - name: Validar módulo fiscal isolado
+        run: npm run test:fiscal
