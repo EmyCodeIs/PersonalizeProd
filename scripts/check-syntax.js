@@ -8,6 +8,7 @@ const root = path.resolve(__dirname, '..');
 const targets = [
   path.join(root, 'src'),
   path.join(root, 'scripts'),
+  path.join(root, 'public', 'panel'),
 ];
 
 function collectJavaScriptFiles(entryPath) {
