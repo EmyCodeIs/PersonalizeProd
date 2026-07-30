@@ -95,11 +95,11 @@ function installSignalHandlers() {
   const originalOnce = process.once;
   const handlers = new Map();
 
-  for (const [signal, exitCode] of [['SIGINT', 130], ['SIGTERM', 143]]) {
+  for (const signal of ['SIGINT', 'SIGTERM']) {
     const handler = async () => {
       if (Lifecycle.snapshotState().phase === 'shutting_down') return;
       const result = await Lifecycle.gracefulShutdown({ signal });
-      const code = result?.forced ? 1 : exitCode;
+      const code = result?.forced ? 1 : 0;
       process.exitCode = code;
       setImmediate(() => process.exit(code));
     };
