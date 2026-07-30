@@ -150,33 +150,10 @@ function candidateIds(clientId) {
   return [...new Set(values.map(normalizeChatId).filter(Boolean))];
 }
 
-function isStrictTesterIdentity({ from, raw } = {}) {
-  const configured = configuredTesterIdentities();
-  if (!configured.length) return false;
-
-  const values = [
-    from,
-    raw?.from,
-    raw?.to,
-    raw?.chatId,
-    raw?.sender?.id,
-    raw?.sender?.id?._serialized,
-    raw?.contact?.id,
-    raw?.contact?.id?._serialized,
-    raw?.id?.remote,
-    raw?.key?.remoteJid,
-    raw?.key?.participant,
-  ];
-  for (const value of [...values, ...candidateIds(from)]) {
-    const serialized = value && typeof value === 'object'
-      ? String(value._serialized || value.id?._serialized || value.id || '').trim()
-      : String(value || '').trim();
-    if (!serialized) continue;
-    for (const allowed of configured) {
-      if (serialized.toLowerCase() === String(allowed).trim().toLowerCase()) return true;
-      if (samePhone(serialized, allowed)) return true;
-    }
-  }
+// Mantida por compatibilidade com as camadas já instaladas. Identidade
+// administrativa concede acesso aos comandos de teste, mas nunca imunidade ao
+// handoff. O único tratamento especial acontece dentro do /resetarsys.
+function isStrictTesterIdentity() {
   return false;
 }
 
