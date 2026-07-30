@@ -193,9 +193,9 @@ const env = {
     process.env.MOSTRUARIO_LINK_URL
     || process.env.MOSTRUARIO_LETREIRO_LINK_URL
     || 'https://personalizeseuambiente.com.br/mostruario-letreiros',
-  assetTabelaCoresBaseName: process.env.ASSET_TABELA_CORES_BASE_NAME || 'tabela-cores-v2',
-  assetTabelaEspessuraBaseName: process.env.ASSET_TABELA_ESPESSURA_BASE_NAME || 'tabela-espessura',
-  assetTabelaProfundidadeBaseName: process.env.ASSET_TABELA_PROFUNDIDADE_BASE_NAME || 'tabela-profundidade-3mm',
+  assetTabelaCoresBaseName: process.env.ASSET_TABELA_CORES_BASENAME || 'tabela-cores-v2',
+  assetTabelaEspessuraBaseName: process.env.ASSET_TABELA_ESPESSURA_BASENAME || 'tabela-espessura',
+  assetTabelaProfundidadeBaseName: process.env.ASSET_TABELA_PROFUNDIDADE_BASENAME || 'tabela-profundidade-3mm',
 };
 
 if (env.maxReplyDelayMs < env.minReplyDelayMs) env.maxReplyDelayMs = env.minReplyDelayMs;
