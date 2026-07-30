@@ -16,7 +16,10 @@ for (const file of [
   'src/modules/panel/server.js',
   'public/fiscal/index.html',
   'public/fiscal/app.js',
+  'public/fiscal/embedded-navigation.css',
+  'public/fiscal/homologationCheck.js',
   'scripts/migrate-fiscal-local.ps1',
+  'scripts/check-focus-homologacao-real.js',
 ]) assert.equal(fs.existsSync(path.join(root, file)), true, `arquivo fiscal ou de integração ausente: ${file}`);
 
 process.env.DEMO_MODE = 'true';
@@ -57,12 +60,27 @@ assert.equal(panelApp.includes('/fiscal/?embedded=1'), true);
 const fiscalIndex = fs.readFileSync(path.join(root, 'public/fiscal/index.html'), 'utf8');
 assert.equal(fiscalIndex.includes('href="/fiscal/'), true);
 assert.equal(fiscalIndex.includes('src="/fiscal/'), true);
+assert.equal(fiscalIndex.includes('/fiscal/embedded-navigation.css'), true);
+assert.equal(fiscalIndex.includes('/fiscal/homologationCheck.js'), true);
 
 const fiscalApp = fs.readFileSync(path.join(root, 'public/fiscal/app.js'), 'utf8');
 assert.equal(fiscalApp.includes('/fiscal/api/'), true);
 assert.equal(/(['"`])\/api\//.test(fiscalApp), false, 'a interface fiscal não pode escapar do proxy /fiscal');
+assert.equal(fiscalApp.includes("link('#/notas','Notas fiscais','notes')"), true);
+assert.equal(fiscalApp.includes("link('#/rascunhos','Rascunhos','drafts')"), true);
+
+const embeddedNavigation = fs.readFileSync(path.join(root, 'public/fiscal/embedded-navigation.css'), 'utf8');
+assert.match(embeddedNavigation, /html\.fiscal-embedded \.sidebar/);
+assert.match(embeddedNavigation, /display: block !important/);
+assert.match(embeddedNavigation, /\.sidebar-nav/);
+
+const homologationCheck = fs.readFileSync(path.join(root, 'public/fiscal/homologationCheck.js'), 'utf8');
+assert.match(homologationCheck, /DEMO_MODE=false/);
+assert.match(homologationCheck, /lookup\/cnpj/);
 
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 assert.match(packageJson.scripts.test, /test:fiscal-integration/);
+assert.equal(packageJson.scripts['fiscal:focus:check'], 'node scripts/check-focus-homologacao-real.js');
+assert.equal(packageJson.scripts['test:seller-label-migration'], 'node scripts/test-seller-label-migration.js');
 
-console.log('✅ Módulo fiscal completo integrado ao painel unificado.');
+console.log('✅ Módulo fiscal completo integrado ao painel unificado, com abas e teste de homologação.');
