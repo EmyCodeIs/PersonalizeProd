@@ -1,11 +1,13 @@
 'use strict';
 
 const WppClient = require('../services/wppconnectClient');
-const SellerHandoff = require('./sellerHandoff');
 const TesterRuntime = require('./testerRuntime');
 const Synchronization = require('./synchronizationGuardPreload');
+const ResetStore = require('../services/handoffResetStore');
 const { decision } = require('./decisionLogger');
 const Access = require('./testCommandAccess');
+
+const RESET_CONFIRMATION = 'Sistema resetado para teste.\n\nConversa zerada para teste. Envie uma nova mensagem para começar como primeiro contato.';
 
 function textFromPayload(payload = {}) {
   return String(payload.text || payload?.raw?.body || payload?.raw?.caption || payload?.raw?.text || '').trim();
@@ -24,38 +26,37 @@ async function waitForOperationalConnection(channel, options = {}) {
   throw error;
 }
 
-function installIsolatedTesterCompatibility() {
-  // Na inicialização real, handoffSafetyPreload já instalou a política central.
-  // Este fallback existe somente para consumidores/testes que carregam este
-  // preload isoladamente e nunca substitui a política final de produção.
-  if (SellerHandoff.__centralHandoffPolicyInstalled || SellerHandoff.__isolatedTesterCompatibilityInstalled) return;
-
-  const originalGetAutomationBlock = SellerHandoff.getAutomationBlock.bind(SellerHandoff);
-  const originalRegisterManualTakeover = SellerHandoff.registerManualTakeover.bind(SellerHandoff);
-
-  SellerHandoff.getAutomationBlock = async function getAutomationBlockWithIsolatedTesterCompatibility(channel, clientId) {
-    if (Access.isTesterIdentity({ from: clientId })) {
-      const cleared = TesterRuntime.clearHumanBlocks(clientId);
-      return { blocked: false, reason: null, source: 'tester_identity', cleared };
+async function sendResetConfirmation(channel, clientId, text = RESET_CONFIRMATION) {
+  // A confirmação do comando precisa sair mesmo quando uma etiqueta externa ainda
+  // está anexada ao contato. Esse é um envio administrativo único, autorizado
+  // somente depois da validação do /resetarsys. Os demais envios continuam
+  // passando normalmente pela trava de handoff.
+  const rawSendText = channel?.client?.sendText;
+  if (typeof rawSendText === 'function') {
+    const pending = channel?.outboundTracker?.register?.(clientId, {
+      type: 'text',
+      text,
+    }) || null;
+    try {
+      const result = await rawSendText.call(channel.client, clientId, text);
+      channel?.outboundTracker?.confirm?.(pending, result);
+      decision('ADMIN', 'resetarsys_confirmação_enviada', {
+        chat: clientId,
+        resultado: 'ok',
+        transporte: 'cliente_wpp_autorizado',
+      });
+      return result;
+    } catch (error) {
+      channel?.outboundTracker?.fail?.(pending);
+      throw error;
     }
-    return originalGetAutomationBlock(channel, clientId);
-  };
+  }
 
-  SellerHandoff.registerManualTakeover = function registerManualTakeoverWithIsolatedTesterCompatibility(clientId, payload = {}) {
-    if (Access.isTesterIdentity({ from: clientId })) {
-      const cleared = TesterRuntime.clearHumanBlocks(clientId);
-      return { bypassed: true, blocked: false, reason: 'tester_identity', cleared };
-    }
-    return originalRegisterManualTakeover(clientId, payload);
-  };
-
-  SellerHandoff.__isolatedTesterCompatibilityInstalled = true;
+  return channel?.sendText?.(clientId, text, { noDelay: true, noTyping: true });
 }
 
 function installTesterHandoffBypass() {
-  if (SellerHandoff.__testerHandoffBypassInstalled) return;
-
-  installIsolatedTesterCompatibility();
+  if (WppClient.__testerHandoffBypassInstalled) return;
 
   const originalCreateWppChannel = WppClient.createWppChannel;
   WppClient.createWppChannel = async function createWppChannelWithTesterReset(options = {}) {
@@ -74,6 +75,9 @@ function installTesterHandoffBypass() {
       }
 
       const cleanup = TesterRuntime.clearTesterConversationRuntime(payload.from);
+      const checkpoint = cleanup?.handoffResetCheckpoint
+        || ResetStore.markReset(payload.from, { reason: 'resetarsys' });
+
       decision('ADMIN', 'resetarsys_limpeza_local', {
         chat: payload.from,
         resultado: 'ok',
@@ -83,13 +87,10 @@ function installTesterHandoffBypass() {
         atividade_bot: cleanup.activityCleared,
         sessão_removida: Boolean(cleanup.reset?.sessionRemoved),
         perfil_removido: Boolean(cleanup.reset?.profileRemoved),
+        corte_historico: checkpoint?.at || '-',
       });
 
-      await channelRef?.sendText?.(
-        payload.from,
-        'Sistema resetado para teste.\n\nConversa zerada para teste. Envie uma nova mensagem para começar como primeiro contato.',
-        { noDelay: true, noTyping: true },
-      );
+      await sendResetConfirmation(channelRef, payload.from);
       return undefined;
     };
 
@@ -97,15 +98,16 @@ function installTesterHandoffBypass() {
     return channelRef;
   };
 
-  SellerHandoff.__testerHandoffBypassInstalled = true;
+  WppClient.__testerHandoffBypassInstalled = true;
 }
 
 installTesterHandoffBypass();
 
 module.exports = {
-  installIsolatedTesterCompatibility,
+  RESET_CONFIRMATION,
   installTesterHandoffBypass,
   isResetCommand,
+  sendResetConfirmation,
   textFromPayload,
   waitForOperationalConnection,
 };
