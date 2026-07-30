@@ -23,6 +23,11 @@ function saveState() {
   Persistence.writeJson(IDENTITIES_PATH, state);
 }
 
+function identityTouchIntervalMs() {
+  const value = Number(process.env.IDENTITY_TOUCH_INTERVAL_MS);
+  return Math.max(60000, Number.isFinite(value) ? value : 300000);
+}
+
 function normalizeChatId(value) {
   const serialized = value && typeof value === 'object'
     ? (value._serialized || value.id?._serialized || value.id || '')
@@ -86,6 +91,21 @@ function chooseContactKey(aliases) {
   return primary ? `wa:${primary}` : null;
 }
 
+function identityFingerprint(contact = {}) {
+  return JSON.stringify({
+    primaryChatId: contact.primaryChatId || null,
+    aliases: [...new Set(contact.aliases || [])].sort(),
+    lid: contact.lid || null,
+    cUsId: contact.cUsId || null,
+    phone: contact.phone || null,
+  });
+}
+
+function touchDue(updatedAt) {
+  const timestamp = new Date(updatedAt || 0).getTime();
+  return !Number.isFinite(timestamp) || (Date.now() - timestamp) >= identityTouchIntervalMs();
+}
+
 function registerContact({ chatId, raw, phone } = {}) {
   const aliases = collectRawAliases({ chatId, raw, phone });
   if (!aliases.length) return null;
@@ -93,7 +113,8 @@ function registerContact({ chatId, raw, phone } = {}) {
   const contactKey = chooseContactKey(aliases);
   if (!contactKey) return null;
 
-  const existing = state.contacts[contactKey] || {
+  const previous = state.contacts[contactKey] || null;
+  const existing = previous || {
     contactKey,
     primaryChatId: aliases[0],
     aliases: [],
@@ -102,6 +123,8 @@ function registerContact({ chatId, raw, phone } = {}) {
     phone: null,
     createdAt: new Date().toISOString(),
   };
+  const beforeFingerprint = identityFingerprint(existing);
+  const previousUpdatedAt = existing.updatedAt;
 
   const mergedAliases = [...new Set([...(existing.aliases || []), ...aliases])];
   existing.aliases = mergedAliases;
@@ -112,10 +135,13 @@ function registerContact({ chatId, raw, phone } = {}) {
     || normalizePhone(existing.cUsId)
     || existing.phone
     || null;
-  existing.updatedAt = new Date().toISOString();
 
   state.contacts[contactKey] = existing;
-  for (const alias of mergedAliases) state.aliases[alias] = contactKey;
+  let aliasMappingChanged = false;
+  for (const alias of mergedAliases) {
+    if (state.aliases[alias] !== contactKey) aliasMappingChanged = true;
+    state.aliases[alias] = contactKey;
+  }
 
   const lidMap = env.lidNumberMap || {};
   if (existing.lid && lidMap[existing.lid]) {
@@ -124,12 +150,20 @@ function registerContact({ chatId, raw, phone } = {}) {
       existing.phone = existing.phone || mappedPhone;
       existing.cUsId = existing.cUsId || `${mappedPhone}@c.us`;
       if (!existing.aliases.includes(existing.cUsId)) existing.aliases.push(existing.cUsId);
+      if (state.aliases[existing.cUsId] !== contactKey) aliasMappingChanged = true;
       state.aliases[existing.cUsId] = contactKey;
     }
   }
 
-  saveState();
-  return { ...existing };
+  const changed = !previous
+    || aliasMappingChanged
+    || beforeFingerprint !== identityFingerprint(existing);
+  if (changed || touchDue(previousUpdatedAt)) {
+    existing.updatedAt = new Date().toISOString();
+    saveState();
+  }
+
+  return { ...existing, aliases: [...(existing.aliases || [])] };
 }
 
 function resolveContact(value) {
@@ -137,7 +171,7 @@ function resolveContact(value) {
   const contactKey = findContactKey(normalized) || (normalized ? `wa:${normalized}` : null);
   if (!contactKey) return null;
   const contact = state.contacts[contactKey];
-  if (contact) return { ...contact };
+  if (contact) return { ...contact, aliases: [...(contact.aliases || [])] };
   return {
     contactKey,
     primaryChatId: normalized,
@@ -179,4 +213,9 @@ module.exports = {
   getSessionKey,
   getLabelCandidateIds,
   resetIdentities,
+  _test: {
+    identityFingerprint,
+    identityTouchIntervalMs,
+    touchDue,
+  },
 };
