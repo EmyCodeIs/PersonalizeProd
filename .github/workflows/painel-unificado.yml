@@ -6,67 +6,10 @@ on:
       - agent/painel-unificado-personalize
   pull_request:
 
-permissions:
-  contents: write
-
 jobs:
-  vendor-fiscal:
-    if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Baixar PersonalizeProd
-        uses: actions/checkout@v4
-        with:
-          ref: agent/painel-unificado-personalize
-          fetch-depth: 0
-
-      - name: Configurar Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-
-      - name: Baixar versão fiscal validada
-        run: git clone --depth 1 --branch agent/ui-identidade-personalize https://github.com/EmyCodeIs/PersonalizeNF.git /tmp/PersonalizeNF
-
-      - name: Copiar e integrar módulo fiscal
-        run: node scripts/vendor-fiscal-module.mjs /tmp/PersonalizeNF
-
-      - name: Corrigir validação gerada do iframe
-        run: |
-          node <<'NODE'
-          const fs = require('node:fs');
-          const file = 'scripts/test-fiscal-integration.js';
-          let content = fs.readFileSync(file, 'utf8');
-          content = content.replace(
-            /^assert\.match\(app, .*embedded=1.*\);$/m,
-            "assert.equal(app.includes('/fiscal/?embedded=1'), true);",
-          );
-          fs.writeFileSync(file, content);
-          NODE
-
-      - name: Validar integração antes de publicar
-        run: |
-          node scripts/check-syntax.js
-          node scripts/test-fiscal-integration.js
-
-      - name: Publicar módulo fiscal na branch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .
-          if git diff --cached --quiet; then
-            echo "Nenhuma alteração necessária."
-            exit 0
-          fi
-          git commit -m "feat: integra sistema fiscal completo ao painel"
-          git push origin HEAD:agent/painel-unificado-personalize
-
   verify:
-    needs: vendor-fiscal
-    if: always() && (needs.vendor-fiscal.result == 'success' || needs.vendor-fiscal.result == 'skipped')
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     env:
       PUPPETEER_SKIP_DOWNLOAD: 'true'
     steps:
@@ -81,5 +24,5 @@ jobs:
       - name: Instalar dependências
         run: npm install
 
-      - name: Validar bot e painel
+      - name: Validar bot, painel e módulo fiscal
         run: npm test
