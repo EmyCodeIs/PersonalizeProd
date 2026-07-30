@@ -3,6 +3,7 @@
 const WppClient = require('../services/wppconnectClient');
 const TesterRuntime = require('./testerRuntime');
 const Synchronization = require('./synchronizationGuardPreload');
+const SafeResetCleanup = require('./safeResetCleanupOverridePreload');
 const ResetStore = require('../services/handoffResetStore');
 const { decision } = require('./decisionLogger');
 const Access = require('./testCommandAccess');
@@ -28,11 +29,12 @@ async function waitForOperationalConnection(channel, options = {}) {
 
 async function sendResetConfirmation(channel, clientId, text = RESET_CONFIRMATION) {
   // A confirmação do comando precisa sair mesmo quando uma etiqueta externa ainda
-  // está anexada ao contato. Esse é um envio administrativo único, autorizado
-  // somente depois da validação do /resetarsys. Os demais envios continuam
-  // passando normalmente pela trava de handoff.
+  // está anexada ao contato. Antes do envio direto, executamos explicitamente a
+  // limpeza segura que remove nota e etiquetas gerenciadas, preservando etiquetas
+  // manuais não gerenciadas. Os demais envios continuam sujeitos ao handoff.
   const rawSendText = channel?.client?.sendText;
   if (typeof rawSendText === 'function') {
+    const safeCleanup = await SafeResetCleanup.safeCleanup(channel, clientId);
     const pending = channel?.outboundTracker?.register?.(clientId, {
       type: 'text',
       text,
@@ -44,6 +46,8 @@ async function sendResetConfirmation(channel, clientId, text = RESET_CONFIRMATIO
         chat: clientId,
         resultado: 'ok',
         transporte: 'cliente_wpp_autorizado',
+        etiquetas_gerenciadas_removidas: safeCleanup?.labels?.removed ?? 'não_confirmado',
+        etiquetas_manuais_preservadas: safeCleanup?.labels?.preserved ?? 'não_confirmado',
       });
       return result;
     } catch (error) {
@@ -52,6 +56,8 @@ async function sendResetConfirmation(channel, clientId, text = RESET_CONFIRMATIO
     }
   }
 
+  // Em ambientes antigos sem client.sendText, mantém o caminho já existente;
+  // o wrapper de safeResetCleanup reconhecerá o prefixo e fará a mesma limpeza.
   return channel?.sendText?.(clientId, text, { noDelay: true, noTyping: true });
 }
 
