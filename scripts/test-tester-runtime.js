@@ -38,9 +38,12 @@ async function run() {
 
   const TesterPreload = require('../src/core/testerHandoffBypassPreload');
   let stateCalls = 0;
-  const connectedState = await TesterPreload.waitForOperationalConnection({ client: { getState: async () => (++stateCalls >= 2 ? 'CONNECTED' : 'SYNCING') } });
+  const connectedState = await TesterPreload.waitForOperationalConnection({
+    client: { getState: async () => (++stateCalls >= 2 ? 'CONNECTED' : 'SYNCING') },
+  });
   assert.equal(connectedState, 'CONNECTED');
   assert.ok(stateCalls >= 2, 'SYNCING não pode liberar a conexão');
+
   const tester = '18885055098907@lid';
   const other = '5531999999999@c.us';
   Store.getSession(tester).etapa = 'cidade';
@@ -49,12 +52,12 @@ async function run() {
   Store.getSession(other).etapa = 'envio';
   Store.saveSession(Store.getSession(other));
   Store.rememberCustomerProfile(other, { name: 'Outro' });
-  HumanControl.setBlock(tester, { reason: 'manual_label', source: 'teste', persistent: true });
   BotActivity.markBotOutbound(tester, { type: 'text' });
 
   const takeover = SellerHandoff.registerManualTakeover(tester, { reason: 'manual_outbound_message' });
-  assert.equal(takeover.bypassed, true);
-  assert.equal((await SellerHandoff.getAutomationBlock({ client: {} }, tester)).blocked, false);
+  assert.equal(takeover.reason, 'manual_outbound_message');
+  assert.equal(HumanControl.getBlock(tester).blocked, true, 'administrador precisa conseguir entrar em handoff');
+  assert.equal((await SellerHandoff.getAutomationBlock({ client: {} }, tester)).blocked, true);
 
   const buffer = new BufferModule.BufferManager({ delayMs: 5000, onFlush: async () => {} });
   buffer.push(tester, { text: 'pendente' });
@@ -68,12 +71,15 @@ async function run() {
   assert.equal(Store.getCustomerProfile(tester), null);
   assert.equal(Store.getCustomerProfile(other)?.knownName, 'Outro');
   assert.equal(Store.getSession(other)?.etapa, 'envio');
-  assert.equal(HumanControl.getBlock(tester).blocked, false);
+  assert.equal(HumanControl.getBlock(tester).blocked, false, 'reset precisa liberar o handoff atual');
   assert.equal(BotActivity.getLastBotOutbound(tester), null);
   assert.equal((await queued).code, 'RESETARSYS');
   await running;
 
-  console.log('✅ Tester verificada: admin legado, sem handoff manual e /resetarsys isolado por conversa.');
+  SellerHandoff.registerManualTakeover(tester, { reason: 'manual_outbound_message' });
+  assert.equal(HumanControl.getBlock(tester).blocked, true, 'nova intervenção após reset precisa bloquear novamente');
+
+  console.log('✅ Administrador verificado: testa handoff normalmente e /resetarsys limpa somente sua conversa.');
 }
 
 run().catch((error) => {
