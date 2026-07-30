@@ -12,11 +12,12 @@ for (const file of [
   'src/modules/fiscal/db.js',
   'src/modules/fiscal/focusClient.js',
   'src/modules/fiscal/payloadBuilder.js',
+  'src/modules/fiscal/process.js',
+  'src/modules/panel/server.js',
   'public/fiscal/index.html',
   'public/fiscal/app.js',
-  'src/services/fiscalModuleProcess.js',
   'scripts/migrate-fiscal-local.ps1',
-]) assert.equal(fs.existsSync(path.join(root, file)), true, `arquivo fiscal ausente: ${file}`);
+]) assert.equal(fs.existsSync(path.join(root, file)), true, `arquivo fiscal ou de integração ausente: ${file}`);
 
 process.env.DEMO_MODE = 'true';
 process.env.PANEL_ADMIN_NAME = 'Personalize';
@@ -43,7 +44,7 @@ assert.match(server, /x-personalize-panel-secret/);
 assert.equal(server.includes("const cancelMatch = url.pathname.match(/^\\/api\\/invoices\\/(\\d+)\\/cancel$/);"), true);
 assert.equal(server.includes("const documentMatch = url.pathname.match(/^\\/api\\/invoices\\/(\\d+)\\/(pdf|xml)$/);"), true);
 
-const panel = fs.readFileSync(path.join(root, 'src/services/unifiedPanelServer.js'), 'utf8');
+const panel = fs.readFileSync(path.join(root, 'src/modules/panel/server.js'), 'utf8');
 assert.match(panel, /proxyFiscalRequest/);
 assert.match(panel, /url\.pathname === '\/fiscal'/);
 assert.match(panel, /isFocusWebhook/);
