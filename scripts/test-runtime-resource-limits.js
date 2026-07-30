@@ -61,36 +61,42 @@ async function testQueueTimeoutIsolation() {
 
   let finishSlowTask;
   let receivedSignal = null;
+  let sameChatStarted = false;
   const slow = queue.enqueue('chat-lento', ({ signal }) => {
     receivedSignal = signal;
     return new Promise((resolve) => { finishSlowTask = resolve; });
   });
 
-  const sameChat = queue.enqueue('chat-lento', async () => 'não deve executar')
-    .then(() => 'executou', (error) => error.code);
+  const sameChat = queue.enqueue('chat-lento', async () => {
+    sameChatStarted = true;
+    return 'preservado';
+  });
   const otherChat = queue.enqueue('chat-livre', async () => 'processado');
 
   await assert.rejects(slow, (error) => error?.code === 'QUEUE_TIMEOUT');
   assert.equal(receivedSignal?.aborted, true, 'timeout deve sinalizar cancelamento cooperativo');
-  assert.equal(await sameChat, 'QUEUE_CHAT_QUARANTINED', 'tarefas seguintes do chat travado devem ser canceladas');
   assert.equal(await otherChat, 'processado', 'outros clientes devem continuar após o timeout');
+  assert.equal(sameChatStarted, false, 'a próxima tarefa do mesmo chat não pode concorrer com a tarefa lenta');
 
   const duringTimeout = queue.stats();
   assert.equal(duringTimeout.runningUnits, 0, 'capacidade global deve ser liberada');
   assert.equal(duringTimeout.activeChats, 1, 'o chat lento deve continuar bloqueado até a tarefa real terminar');
   assert.equal(duringTimeout.timedOutTasks, 1);
+  assert.equal(duringTimeout.queued, 1, 'a próxima mensagem do chat deve permanecer aguardando');
 
   finishSlowTask('finalizada tarde');
+  assert.equal(await sameChat, 'preservado', 'a próxima tarefa deve executar após a liberação real do chat');
   await wait(5);
   const afterFinish = queue.stats();
   assert.equal(afterFinish.activeChats, 0);
   assert.equal(afterFinish.runningTasks, 0);
+  assert.equal(afterFinish.queued, 0);
 }
 
 (async () => {
   await testBufferLimits();
   await testQueueTimeoutIsolation();
-  console.log('✅ Runtime protegido: buffers limitados sem perda e timeout isolado por chat.');
+  console.log('✅ Runtime protegido: buffers sem perda e timeout isolado preservando a próxima mensagem.');
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;
