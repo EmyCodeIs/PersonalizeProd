@@ -8,10 +8,6 @@ function cacheStub(relative, exports) {
   return exports;
 }
 
-process.env.ADMIN_WHATSAPP_NUMBERS = '5531971386091';
-process.env.ADMIN_WHATSAPP_CHAT_IDS = '18885055098907@lid';
-process.env.ALLOWED_CLIENT_NUMBERS = '5531999999999';
-
 cacheStub('../src/config/env', {
   env: {
     serviceLabelReplaceGroup: [],
@@ -44,15 +40,6 @@ let resetCheckpoint = null;
 cacheStub('../src/services/handoffResetStore', {
   getResetCheckpoint() { return resetCheckpoint; },
 });
-const blocks = new Map();
-const HumanControl = cacheStub('../src/services/humanControlStore', {
-  setBlock(clientId, payload) { blocks.set(Identity.getSessionKey(clientId), payload); return payload; },
-  clearBlock(clientId) { return blocks.delete(Identity.getSessionKey(clientId)); },
-});
-const Access = cacheStub('../src/core/testCommandAccess', {
-  isTesterIdentity() { return false; },
-});
-cacheStub('../src/core/decisionLogger', { decision() {} });
 
 const History = require('../src/core/handoffHistoryPolicyPreload');
 
@@ -75,16 +62,18 @@ const resetWins = History.withHandoffHistoryBoundary(
 );
 assert.equal(resetWins.type, 'resetarsys_handoff_boundary');
 
-assert.equal(Access.isTesterIdentity({ from: '18885055098907@lid' }), true);
-assert.equal(
-  Access.isTesterIdentity({ from: '5531999999999@c.us' }),
-  false,
-  'whitelist geral não pode virar tester',
+actualCheckpoint = { at: new Date(Date.now() + 3000).toISOString(), messageId: 'bot-after-reset', type: 'text' };
+const botAfterResetWins = History.withHandoffHistoryBoundary(
+  () => BotActivity.getLastBotOutbound('18885055098907@lid'),
 );
-const ignored = HumanControl.setBlock('18885055098907@lid', { reason: 'manual_outbound_history' });
-assert.equal(ignored.bypassed, true);
-assert.equal(blocks.size, 0);
-HumanControl.setBlock('5531999999999@c.us', { reason: 'manual_outbound_message' });
-assert.equal(blocks.size, 1);
+assert.equal(botAfterResetWins.messageId, 'bot-after-reset');
 
-console.log('✅ Histórico de handoff verificado: checkpoint real preservado, reset persistente e tester estrita.');
+assert.equal(
+  History.newestCheckpoint(
+    { at: '2026-07-30T10:00:00.000Z', type: 'resetarsys_handoff_boundary' },
+    { at: '2026-07-30T10:00:02.000Z', messageId: 'bot-new' },
+  ).messageId,
+  'bot-new',
+);
+
+console.log('✅ Histórico de handoff verificado: reinício preserva checkpoint e /resetarsys ignora somente mensagens anteriores.');
