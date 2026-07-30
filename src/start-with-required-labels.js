@@ -106,6 +106,9 @@ require('./core/runtimeOptimizationPreload');
 // Impede novas entradas durante encerramento, drena o trabalho existente e
 // publica liveness, readiness e health reais no servidor administrativo local.
 require('./core/gracefulHealthPreload');
+// Contatos com handoff persistente param antes de sessão, identidade, buffer e fila.
+// A liberação por etiqueta continua orientada por evento e é reconciliada uma vez no startup.
+require('./core/handoffSleepPreload');
 
 // As limpezas acontecem antes de o Chrome abrir. Durante a execução há apenas monitoramento.
 const TokenCache = require('./core/tokenCacheMaintenance');
