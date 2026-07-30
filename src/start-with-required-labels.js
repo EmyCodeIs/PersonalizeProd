@@ -2,6 +2,8 @@
 
 require('dotenv').config();
 require('./core/safeLoggingPreload');
+// Mantém o QR visível enquanto o WPPConnect alterna entre catchQR e estados transitórios.
+require('./core/qrStateConsistencyPreload');
 
 // No Windows, SESSION_ACCESS_AUTO_START decide se o portal local será iniciado.
 // Na VPS, `npm run vps:start` cria uma área de trabalho virtual, publica essa
