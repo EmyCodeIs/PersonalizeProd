@@ -184,17 +184,9 @@ function findSellerLabelMatch(items = []) {
       }
     }
 
-    return {
-      assigned: true,
-      reason: 'manual_label',
-      seller: null,
-      sellerColor: null,
-      labelName,
-      labelId: String(item?.id || ''),
-      labelHex: String(item?.hexColor || '').trim().toLowerCase() || null,
-      labelColorIndex: Number.isFinite(Number(item?.colorIndex)) ? Number(item.colorIndex) : null,
-      matchMode: 'manual_label',
-    };
+    // Etiquetas manuais são preservadas, mas não representam responsável.
+    // Continue procurando porque uma etiqueta exata de vendedor pode aparecer
+    // depois delas na lista retornada pelo WhatsApp.
   }
 
   return null;
