@@ -1,37 +1,47 @@
-# Módulo fiscal
+# Módulo fiscal de NFS-e
 
-Este diretório contém o sistema completo de NFS-e incorporado ao `PersonalizeProd`.
+Este diretório contém o sistema fiscal dentro do mesmo repositório `PersonalizeProd`, mas sem alterar ou participar da inicialização do bot.
 
 ## Responsabilidades
 
-- configuração fiscal;
 - integração com a Focus;
-- emissão, consulta e cancelamento;
-- rascunhos e histórico;
-- banco SQLite fiscal;
+- emissão, consulta e cancelamento de NFS-e;
+- notas emitidas, rascunhos e histórico;
+- banco SQLite fiscal próprio;
 - armazenamento de PDF e XML;
-- demonstração, homologação e produção;
-- processo interno isolado em `127.0.0.1:3031`.
+- demonstração, homologação e produção protegida.
 
-## Limites
+## Limite obrigatório
 
-Este módulo não deve:
+Este módulo não pode:
 
-- alterar mensagens do bot;
-- acessar sessões comerciais do atendimento;
-- modificar etiquetas ou handoff;
-- compartilhar tabelas com o banco operacional do bot;
-- encerrar o processo principal quando a Focus falhar.
+- alterar mensagens, logs ou inicialização do bot;
+- acessar a conexão ou a sessão do WPPConnect;
+- modificar fluxo, fila, buffer, etiquetas ou handoff;
+- compartilhar tabelas com o banco operacional do atendimento;
+- ser iniciado pelo comando `npm start`.
 
-A interface correspondente fica em `public/fiscal/`.
+## Execução isolada
 
-O arquivo `process.js` inicia o fiscal como processo filho isolado. O painel principal acessa o módulo somente pelo proxy autenticado `/fiscal/*`.
+Dentro da pasta principal do projeto:
 
-Dados locais:
+```powershell
+npm run fiscal:start
+```
+
+Acesse:
+
+```text
+http://127.0.0.1:3031
+```
+
+O `npm start` continua iniciando somente o sistema existente da Personalize.
+
+## Dados locais
 
 ```text
 data/fiscal/personalize-nf.sqlite
 storage/fiscal-documents/
 ```
 
-Esses caminhos são ignorados pelo Git e nunca devem receber tokens, certificados ou documentos versionados.
+Esses caminhos são ignorados pelo Git. Tokens e documentos fiscais permanecem apenas no `.env` e nas pastas locais.
