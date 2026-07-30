@@ -4,7 +4,7 @@
   "productionBranch": "main",
   "productionCommit": "fe6ca12df261015fdca9a2df87caa608ac51c944",
   "observabilityStage": "etapa-2",
-  "correctionStage": "sincronizacao-handoff-runtime-banco-seguro",
+  "correctionStage": "sincronizacao-handoff-runtime-banco-health-seguro",
   "package": {
     "name": "personalize-wppconnect-cliente-flow",
     "version": "0.7.3",
@@ -62,7 +62,8 @@
     "./core/handoffSafetyPreload",
     "./core/testerHandoffBypassPreload",
     "./core/sellerLabelEventsPreload",
-    "./core/runtimeOptimizationPreload"
+    "./core/runtimeOptimizationPreload",
+    "./core/gracefulHealthPreload"
   ],
   "preserved": {
     "commercialMessages": true,
@@ -96,6 +97,9 @@
     "expired_sessions_are_purged_periodically",
     "handoff_caches_are_ttl_and_size_bounded",
     "sqlite_quick_check_optimize_and_passive_checkpoint",
-    "identity_store_avoids_redundant_full_document_writes"
+    "identity_store_avoids_redundant_full_document_writes",
+    "graceful_shutdown_drains_buffers_and_queue_before_close",
+    "health_separates_liveness_readiness_and_full_runtime_state",
+    "whatsapp_is_closed_without_logging_out_the_session"
   ]
 }
