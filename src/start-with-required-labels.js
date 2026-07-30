@@ -87,6 +87,7 @@ const TokenCache = require('./core/tokenCacheMaintenance');
 const BrowserCache = require('./core/browserCacheMaintenance');
 const Persistence = require('./services/persistence');
 const { startQrAdminServer } = require('./services/qrAdminServer');
+const { startFiscalModuleProcess } = require('./services/fiscalModuleProcess');
 const { startUnifiedPanelServer } = require('./services/unifiedPanelServer');
 
 TokenCache.runStartupTokenCacheMaintenance();
@@ -95,8 +96,15 @@ BrowserCache.runStartupBrowserCacheMaintenance();
 BrowserCache.startBrowserCacheMonitor();
 startQrAdminServer();
 
-// O painel usa apenas APIs locais e arquivos de status. Qualquer falha de porta,
-// senha ou configuração é isolada e nunca impede o atendimento do bot.
+// O fiscal roda em processo isolado: qualquer falha da Focus ou do banco fiscal
+// não encerra nem bloqueia o atendimento do WhatsApp.
+try {
+  startFiscalModuleProcess();
+} catch (error) {
+  console.warn('[FISCAL] falha isolada ao iniciar:', error?.message || error);
+}
+
+// O painel usa somente APIs locais. Falhas visuais nunca impedem o bot.
 try {
   startUnifiedPanelServer();
 } catch (error) {

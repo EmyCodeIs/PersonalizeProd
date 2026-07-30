@@ -192,6 +192,39 @@ function postLocalJson({ host, port, pathname }) {
   });
 }
 
+function proxyFiscalRequest({ request, response, url, config }) {
+  const targetPath = (url.pathname.replace(/^\/fiscal(?=\/|$)/, '') || '/') + url.search;
+  const headers = {
+    ...request.headers,
+    host: `${config.fiscalInternalHost}:${config.fiscalInternalPort}`,
+    'x-personalize-panel-secret': config.panelInternalSecret,
+  };
+  delete headers.connection;
+
+  const upstream = http.request({
+    host: config.fiscalInternalHost,
+    port: config.fiscalInternalPort,
+    path: targetPath,
+    method: request.method,
+    headers,
+    timeout: 65000,
+  }, (upstreamResponse) => {
+    const responseHeaders = { ...upstreamResponse.headers };
+    if (typeof responseHeaders.location === 'string' && responseHeaders.location.startsWith('/')) {
+      responseHeaders.location = `/fiscal${responseHeaders.location}`;
+    }
+    response.writeHead(upstreamResponse.statusCode || 502, responseHeaders);
+    upstreamResponse.pipe(response);
+  });
+
+  upstream.on('timeout', () => upstream.destroy(new Error('O módulo fiscal demorou para responder.')));
+  upstream.on('error', (error) => {
+    if (!response.headersSent) json(response, 502, { error: `Módulo fiscal indisponível: ${error.message}` });
+    else response.destroy(error);
+  });
+  request.pipe(upstream);
+}
+
 function createPanelConfig() {
   const password = String(
     process.env.PANEL_ADMIN_PASSWORD
@@ -212,8 +245,11 @@ function createPanelConfig() {
     sessionAccessUrl: String(process.env.SESSION_ACCESS_PUBLIC_URL || '').trim(),
     qrAdminHost: String(process.env.QR_ADMIN_HOST || '127.0.0.1').trim(),
     qrAdminPort: Math.max(1, number(process.env.QR_ADMIN_PORT, 3210)),
-    fiscalPanelUrl: String(process.env.FISCAL_PANEL_URL || '').trim(),
-    fiscalMigrationState: String(process.env.FISCAL_MIGRATION_STATE || 'preparando').trim(),
+    panelInternalSecret: String(process.env.PANEL_INTERNAL_SECRET || '').trim(),
+    fiscalInternalHost: String(process.env.FISCAL_INTERNAL_HOST || '127.0.0.1').trim(),
+    fiscalInternalPort: Math.max(1, number(process.env.FISCAL_INTERNAL_PORT, 3031)),
+    fiscalPanelUrl: '/fiscal/',
+    fiscalMigrationState: 'integrado',
   };
 }
 
@@ -272,6 +308,13 @@ function startUnifiedPanelServer() {
       return;
     }
 
+    if (url.pathname === '/fiscal' || url.pathname.startsWith('/fiscal/')) {
+      if (!session) return json(response, 401, { error: 'Faça login para continuar.' });
+      if (!config.panelInternalSecret) return json(response, 503, { error: 'Integração fiscal interna não configurada.' });
+      proxyFiscalRequest({ request, response, url, config });
+      return;
+    }
+
     if (url.pathname.startsWith('/api/')) {
       if (!session) return json(response, 401, { error: 'Faça login para continuar.' });
 
@@ -319,7 +362,7 @@ function startUnifiedPanelServer() {
 
   server.listen(config.port, config.host, () => {
     console.log(`[PAINEL] unificado disponível em http://${config.host}:${config.port}`);
-    console.log('[PAINEL] módulos iniciais: visão geral e conexão do bot');
+    console.log('[PAINEL] módulos integrados: conexão do bot e notas fiscais');
   });
 
   return server;

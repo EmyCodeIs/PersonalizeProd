@@ -154,13 +154,13 @@ function bindShell() {
 function overviewMarkup(data) {
   const connection = data.connection || {};
   const meta = statusMeta(connection);
-  const fiscalState = data.fiscal?.migrationState || 'preparando';
+  const fiscalState = data.fiscal?.migrationState || 'integrado';
   const fiscalReady = fiscalState === 'integrado';
   return `<div class="hero-row"><div><h2>Olá, Personalize 👋</h2><p>Confira os módulos operacionais e acesse rapidamente o que precisa de atenção.</p></div></div>
     <section class="grid metrics">
       <article class="metric"><div class="metric-label">Conexão do bot</div><div class="metric-value">${escapeHtml(meta.label)}</div><div class="metric-foot">${escapeHtml(connection.connectionState || 'Sem sinal técnico')}</div></article>
       <article class="metric blue"><div class="metric-label">Última atualização</div><div class="metric-value" style="font-size:19px">${escapeHtml(formatDate(connection.updatedAt))}</div><div class="metric-foot">Status publicado pelo WPPConnect</div></article>
-      <article class="metric red"><div class="metric-label">Módulo fiscal</div><div class="metric-value">${fiscalReady ? 'Integrado' : 'Migrando'}</div><div class="metric-foot">Estrutura fiscal preservada separadamente</div></article>
+      <article class="metric red"><div class="metric-label">Módulo fiscal</div><div class="metric-value">${fiscalReady ? 'Integrado' : 'Migrando'}</div><div class="metric-foot">Emissão, documentos e histórico no mesmo painel</div></article>
     </section>
     <section class="grid card-grid">
       <article class="card">
@@ -258,24 +258,12 @@ function bindConnectionActions() {
 }
 
 async function fiscalView() {
-  const data = state.overview || await api('/api/panel/overview');
-  const panelUrl = data.fiscal?.panelUrl || '';
-  const isIntegrated = data.fiscal?.migrationState === 'integrado';
-  const action = panelUrl
-    ? `<a class="button primary" href="${escapeHtml(panelUrl)}" target="_blank" rel="noopener">Abrir módulo fiscal atual</a>`
-    : '<button class="button secondary" disabled>Módulo fiscal ainda não publicado aqui</button>';
-  app.innerHTML = shell(`<div class="hero-row"><div><h2>Notas fiscais</h2><p>Este módulo receberá a estrutura já validada do PersonalizeNF sem alterar o funcionamento do bot.</p></div></div>
-    <section class="card">
-      <div class="empty-state">
-        <strong>${isIntegrated ? 'Módulo fiscal integrado' : 'Migração segura em andamento'}</strong>
-        <p>O painel visual já está no PersonalizeProd. A emissão, banco fiscal, Focus, PDF e XML serão movidos como um módulo isolado para que qualquer falha fiscal nunca interrompa o atendimento do WhatsApp.</p>
-        <div style="margin-top:22px">${action}</div>
-      </div>
-    </section>`, 'Notas fiscais');
+  app.innerHTML = shell(`<section class="fiscal-frame-card">
+    <iframe class="fiscal-frame" src="/fiscal/?embedded=1" title="Emissão e gestão de notas fiscais" loading="eager"></iframe>
+  </section>`, 'Notas fiscais');
   bindShell();
   stopPolling();
 }
-
 async function route() {
   stopPolling();
   if (!state.user) return loginView();

@@ -415,3 +415,9 @@ a { color: inherit; }
   .topbar-actions .runtime-badge { display: none; }
   .connection-hero { padding: 22px; }
 }
+
+
+/* Módulo fiscal integrado */
+.fiscal-frame-card { height: calc(100vh - 116px); min-height: 680px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: var(--shadow); }
+.fiscal-frame { width: 100%; height: 100%; display: block; border: 0; background: var(--canvas); }
+@media (max-width: 760px) { .fiscal-frame-card { height: calc(100vh - 140px); min-height: 620px; border-radius: 12px; } }

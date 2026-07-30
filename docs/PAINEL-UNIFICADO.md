@@ -108,3 +108,20 @@ Processo do bot
 8. Somente depois ativar produção.
 
 A migração não deve reutilizar diretamente as tabelas operacionais do bot. O painel é único; os dados e responsabilidades continuam separados.
+
+
+## Módulo fiscal integrado
+
+O núcleo completo do antigo PersonalizeNF agora está versionado em `src/modules/fiscal` e é iniciado automaticamente como processo local isolado. O painel principal faz proxy autenticado em `/fiscal/`, portanto não existe segundo login nem exposição direta da porta interna.
+
+- banco fiscal: `data/fiscal/personalize-nf.sqlite`;
+- documentos: `storage/fiscal-documents`;
+- processo interno: `127.0.0.1:3031`;
+- entrada única: painel em `127.0.0.1:3030`;
+- falha fiscal não encerra o bot.
+
+Para trazer banco, documentos e configurações locais do projeto antigo no Windows:
+
+```powershell
+.\scripts\migrate-fiscal-local.ps1
+```

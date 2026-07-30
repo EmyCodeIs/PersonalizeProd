@@ -1,0 +1,30 @@
+#invoice-form .is-invalid {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12) !important;
+  background: #fff7f7;
+}
+
+#invoice-form .service-grid.is-invalid {
+  border: 1px solid #dc2626;
+  border-radius: 14px;
+  padding: 10px;
+  background: #fff7f7;
+}
+
+#invoice-form .field-error {
+  display: block;
+  margin-top: 6px;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+#invoice-form [name="clientPostalCode"][data-loading="true"] {
+  background-image: linear-gradient(90deg, transparent, rgba(109, 40, 217, 0.08), transparent);
+  background-size: 200% 100%;
+  animation: cep-loading 1s linear infinite;
+}
+
+@keyframes cep-loading {
+  to { background-position: -200% 0; }
+}
