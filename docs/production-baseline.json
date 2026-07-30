@@ -4,7 +4,7 @@
   "productionBranch": "main",
   "productionCommit": "fe6ca12df261015fdca9a2df87caa608ac51c944",
   "observabilityStage": "etapa-2",
-  "correctionStage": "sincronizacao-handoff-runtime-banco-health-handoff-adormecido",
+  "correctionStage": "sincronizacao-handoff-runtime-banco-health-handoff-adormecido-qr-painel",
   "package": {
     "name": "personalize-wppconnect-cliente-flow",
     "version": "0.7.3",
@@ -37,6 +37,7 @@
   ],
   "startupPreloads": [
     "./core/safeLoggingPreload",
+    "./core/qrStateConsistencyPreload",
     "./core/synchronizationGuardPreload",
     "./core/operationalLabelPolicyPreload",
     "./core/exclusiveServiceLabelsPreload",
@@ -103,6 +104,7 @@
     "health_separates_liveness_readiness_and_full_runtime_state",
     "whatsapp_is_closed_without_logging_out_the_session",
     "persistent_handoffs_stop_before_session_buffer_and_queue",
-    "label_handoffs_reconcile_once_after_startup_and_by_events"
+    "label_handoffs_reconcile_once_after_startup_and_by_events",
+    "active_qr_survives_transient_wppconnect_status_callbacks"
   ]
 }
