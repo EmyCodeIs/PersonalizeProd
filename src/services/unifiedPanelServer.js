@@ -309,7 +309,8 @@ function startUnifiedPanelServer() {
     }
 
     if (url.pathname === '/fiscal' || url.pathname.startsWith('/fiscal/')) {
-      if (!session) return json(response, 401, { error: 'Faça login para continuar.' });
+      const isFocusWebhook = request.method === 'POST' && url.pathname === '/fiscal/api/webhooks/focus';
+      if (!session && !isFocusWebhook) return json(response, 401, { error: 'Faça login para continuar.' });
       if (!config.panelInternalSecret) return json(response, 503, { error: 'Integração fiscal interna não configurada.' });
       proxyFiscalRequest({ request, response, url, config });
       return;
