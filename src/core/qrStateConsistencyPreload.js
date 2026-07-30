@@ -4,8 +4,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const QrAccess = require('../services/qrAccess');
 
+function positiveNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 const STATUS_PATH = path.resolve(process.cwd(), process.env.QR_STATUS_JSON || 'data/qr-status/status.json');
-const ACTIVE_QR_TTL_MS = Math.max(30000, Number(process.env.QR_ACTIVE_TTL_MS || 120000));
+const ACTIVE_QR_TTL_MS = Math.max(30000, positiveNumber(process.env.QR_ACTIVE_TTL_MS, 120000));
 
 const TRANSIENT_QR_STATES = new Set([
   'NOTLOGGED',
