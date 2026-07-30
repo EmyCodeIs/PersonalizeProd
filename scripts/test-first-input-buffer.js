@@ -49,6 +49,12 @@ assert.equal(
   'primeira mensagem precisa usar 8 segundos',
 );
 assert.equal(calls.at(-1).options.delayMs, 8000);
+assert.equal(
+  buffer.push('cliente-inicial', { text: 'Meu nome é Ana' }, { delayMs: 4500 }),
+  8000,
+  'cada fragmento ainda na etapa inicial precisa renovar a janela de 8 segundos',
+);
+assert.equal(calls.at(-1).options.delayMs, 8000);
 
 stage = 'escolher_servico';
 assert.equal(
@@ -63,4 +69,4 @@ assert.equal(buffer.push('cliente-suporte', { text: 'Detalhe' }, { delayMs: 4500
 stage = 'plotagem_cidade';
 assert.equal(buffer.push('cliente-cidade', { text: 'BH' }, { delayMs: 4500 }), 2500);
 
-console.log('✅ Primeiro input aguarda 8s; buffers e tempos das demais etapas permanecem preservados.');
+console.log('✅ Primeiro input aguarda 8s e renova a janela; demais buffers permanecem preservados.');
