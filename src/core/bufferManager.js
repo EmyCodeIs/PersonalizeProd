@@ -67,6 +67,16 @@ class BufferManager {
       1,
     );
     this.map = new Map();
+    this.pendingFlushes = new Set();
+  }
+
+  _trackFlush(action) {
+    let operation;
+    operation = Promise.resolve()
+      .then(action)
+      .finally(() => this.pendingFlushes.delete(operation));
+    this.pendingFlushes.add(operation);
+    return operation;
   }
 
   _flush(id, reason = 'timer') {
@@ -78,8 +88,7 @@ class BufferManager {
     if (!current.messages?.length) return 0;
 
     const messages = current.messages;
-    Promise.resolve()
-      .then(() => this.onFlush(id, messages))
+    this._trackFlush(() => this.onFlush(id, messages))
       .catch((err) => {
         decisionError('buffer_flush_falhou', err, { chat: id, quantidade: messages.length, motivo: reason });
         console.error('[BUFFER] flush error:', err?.message || err);
@@ -183,6 +192,16 @@ class BufferManager {
     return removed;
   }
 
+  async drainAll(reason = 'encerramento') {
+    let flushed = 0;
+    for (const id of [...this.map.keys()]) flushed += this._flush(id, reason);
+
+    while (this.pendingFlushes.size) {
+      await Promise.allSettled([...this.pendingFlushes]);
+    }
+    return flushed;
+  }
+
   sweep({ maxAgeMs } = {}) {
     const threshold = Math.max(this.delayMs * 4, Number(maxAgeMs || this.delayMs * 4));
     const now = Date.now();
@@ -205,6 +224,7 @@ class BufferManager {
       activeChats: this.map.size,
       messages,
       bytes,
+      pendingFlushes: this.pendingFlushes.size,
       maxActiveChats: this.maxActiveChats,
       maxMessagesPerChat: this.maxMessagesPerChat,
       maxBytesPerChat: this.maxBytesPerChat,
