@@ -87,12 +87,21 @@ const TokenCache = require('./core/tokenCacheMaintenance');
 const BrowserCache = require('./core/browserCacheMaintenance');
 const Persistence = require('./services/persistence');
 const { startQrAdminServer } = require('./services/qrAdminServer');
+const { startUnifiedPanelServer } = require('./services/unifiedPanelServer');
 
 TokenCache.runStartupTokenCacheMaintenance();
 TokenCache.startTokenCacheMonitor();
 BrowserCache.runStartupBrowserCacheMaintenance();
 BrowserCache.startBrowserCacheMonitor();
 startQrAdminServer();
+
+// O painel usa apenas APIs locais e arquivos de status. Qualquer falha de porta,
+// senha ou configuração é isolada e nunca impede o atendimento do bot.
+try {
+  startUnifiedPanelServer();
+} catch (error) {
+  console.warn('[PAINEL] falha isolada ao iniciar:', error?.message || error);
+}
 
 const storage = Persistence.storageInfo();
 if (storage.driver === 'sqlite') Persistence.getDatabase();
