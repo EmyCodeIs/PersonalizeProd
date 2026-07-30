@@ -29,6 +29,15 @@ const CONNECTED_ALIASES = new Set([
   'ISLOGGED',
 ]);
 
+const DISCONNECTED_STATES = new Set([
+  'CONFLICT',
+  'UNPAIRED',
+  'UNPAIREDIDLE',
+  'DISCONNECTED',
+  'DISCONNECTEDMOBILE',
+  'PHONENOTCONNECTED',
+]);
+
 const STATE_ALIASES = Object.freeze({
   DESCONECTEDMOBILE: 'DISCONNECTEDMOBILE',
   BROWSERCLOSE: 'DISCONNECTED',
@@ -55,6 +64,22 @@ function readSnapshot() {
   }
 }
 
+function writeDisconnectMetadata(connectionState) {
+  try {
+    const snapshot = readSnapshot();
+    if (!snapshot) return;
+    const now = new Date().toISOString();
+    fs.writeFileSync(STATUS_PATH, JSON.stringify({
+      ...snapshot,
+      status: 'waiting',
+      connectionState,
+      disconnectState: connectionState,
+      disconnectedAt: now,
+      updatedAt: now,
+    }, null, 2));
+  } catch (_) {}
+}
+
 function hasFreshActiveQr() {
   const snapshot = readSnapshot();
   if (!snapshot || snapshot.status !== 'qr' || !String(snapshot.imageSrc || '').startsWith('data:image')) {
@@ -67,6 +92,7 @@ function hasFreshActiveQr() {
 if (!QrAccess.__qrStateConsistencyInstalled) {
   const originalPublishQrCode = QrAccess.publishQrCode.bind(QrAccess);
   const originalPublishConnected = QrAccess.publishConnected.bind(QrAccess);
+  const originalPublishMessage = QrAccess.publishMessage.bind(QrAccess);
   const originalPublishState = QrAccess.publishState.bind(QrAccess);
 
   QrAccess.publishQrCode = function publishQrCodeConsistently(payload = {}) {
@@ -82,6 +108,16 @@ if (!QrAccess.__qrStateConsistencyInstalled) {
   QrAccess.publishState = function publishStateConsistently(connectionState, message = '') {
     const normalized = normalizeState(connectionState);
     const mapped = STATE_ALIASES[normalized] || normalized;
+
+    if (DISCONNECTED_STATES.has(mapped)) {
+      lastQrPublishedAt = 0;
+      const result = originalPublishMessage(
+        message || 'A sessão foi desconectada e precisa ser reconectada.',
+        mapped,
+      );
+      writeDisconnectMetadata(mapped);
+      return result;
+    }
 
     if (CONNECTED_ALIASES.has(mapped)) {
       lastQrPublishedAt = 0;
