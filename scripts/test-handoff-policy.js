@@ -207,6 +207,7 @@ const Safety = require('../src/core/handoffSafetyPreload');
   });
   assert.equal(event.reason, 'MANAGED_SERVICE_LABEL');
 
+  labelState.set(admin, [{ name: 'Fornecedor' }]);
   event = await handler({
     data: { chatId: admin, type: 'add', labels: [{ name: 'Fornecedor' }] }, channel: created,
   });
