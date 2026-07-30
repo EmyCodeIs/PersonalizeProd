@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/start-with-required-labels.js",
     "dev": "node src/start-with-required-labels.js",
-    "test": "npm run check && npm run test:business-config && npm run test:lettering-sequence && npm run test:readiness && npm run test:handoff && npm run test:seller-label-events && npm run test:exclusive-labels && npm run test:service-label-once && npm run test:seller-label-migration && npm run test:reset-handoff && npm run test:reset-labels && npm run test:commands && npm run test:catalog && npm run test:token-cache && npm run test:token-runtime && npm run test:browser-cache && npm run test:env && npm run storage:test && npm run test:vps-browser",
+    "test": "npm run check && npm run test:business-config && npm run test:lettering-sequence && npm run test:readiness && npm run test:handoff && npm run test:seller-label-events && npm run test:exclusive-labels && npm run test:service-label-once && npm run test:seller-label-migration && npm run test:reset-handoff && npm run test:reset-labels && npm run test:commands && npm run test:catalog && npm run test:token-cache && npm run test:token-runtime && npm run test:browser-cache && npm run test:env && npm run test:panel && npm run storage:test && npm run test:vps-browser",
     "check": "node scripts/check-syntax.js",
     "test:flow": "node scripts/test-flow.js",
     "test:business-config": "node scripts/test-current-business-config.js",
@@ -26,6 +26,11 @@
     "test:token-runtime": "node scripts/test-token-cache-runtime.js",
     "test:env": "node scripts/test-env-examples.js",
     "test:vps-browser": "node scripts/test-vps-browser.js",
+    "test:browser-cache": "node scripts/test-browser-cache-runtime.js",
+    "test:panel": "node scripts/test-unified-panel.js",
+    "storage:init": "node scripts/init-secure-storage.js",
+    "storage:test": "node scripts/test-secure-storage.js",
+    "storage:seal-legacy": "node scripts/seal-legacy-data.js --apply",
     "test:labels": "node scripts/test-labels.js",
     "labels:sellers:audit": "node scripts/migrate-seller-labels.js",
     "labels:sellers:migrate": "node scripts/migrate-seller-labels.js --apply --confirm=MIGRAR_ETIQUETAS_VENDEDORES",
@@ -40,12 +45,8 @@
     "vps:preflight": "bash scripts/vps-preflight-admin-wrapper.sh",
     "vps:configure-nginx": "bash scripts/configure-nginx-access.sh",
     "vps:start": "bash scripts/start-vps-whatsapp.sh",
-    "storage:init": "node scripts/init-secure-storage.js",
-    "storage:test": "node scripts/test-secure-storage.js",
     "vps:prepare": "node scripts/prepare-vps-env.js",
-    "vps:deploy": "bash scripts/deploy-vps-ready.sh",
-    "test:browser-cache": "node scripts/test-browser-cache-runtime.js",
-    "storage:seal-legacy": "node scripts/seal-legacy-data.js --apply"
+    "vps:deploy": "bash scripts/deploy-vps-ready.sh"
   },
   "dependencies": {
     "@novnc/novnc": "^1.5.0",
