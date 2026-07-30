@@ -28,7 +28,7 @@ function Upsert-EnvLine([System.Collections.Generic.List[string]]$Lines, [string
 }
 
 Write-Host 'Feche o PersonalizeNF e o PersonalizeProd antes de continuar.' -ForegroundColor Yellow
-Write-Host "Migrando dados fiscais de $SourcePath" -ForegroundColor Cyan
+Write-Host "Migrando somente os dados fiscais de $SourcePath" -ForegroundColor Cyan
 
 $FiscalData = Join-Path $Root 'data\fiscal'
 $FiscalDocuments = Join-Path $Root 'storage\fiscal-documents'
@@ -68,37 +68,20 @@ if (Test-Path $TargetEnv) {
 if (Test-Path $SourceEnv) {
   $sourceMap = Read-EnvMap $SourceEnv
   foreach ($key in $sourceMap.Keys) {
-    if ($key -match '^(DEMO_MODE|DEMO_APPROVAL_DELAY_MS|ALLOW_PRODUCTION|FOCUS_|DPS_SERIES|COMPANY_|SERVICE_)') {
+    if ($key -match '^(ADMIN_|SESSION_SECRET$|DEMO_MODE|DEMO_APPROVAL_DELAY_MS|ALLOW_PRODUCTION|FOCUS_|DPS_SERIES|COMPANY_|SERVICE_)') {
       Upsert-EnvLine $targetLines $key ([string]$sourceMap[$key]) $true
-    }
-  }
-
-  $credentialMap = [ordered]@{
-    PANEL_ADMIN_NAME = 'ADMIN_NAME'
-    PANEL_ADMIN_EMAIL = 'ADMIN_EMAIL'
-    PANEL_ADMIN_PASSWORD = 'ADMIN_PASSWORD'
-    PANEL_SESSION_SECRET = 'SESSION_SECRET'
-  }
-  foreach ($targetKey in $credentialMap.Keys) {
-    $sourceKey = $credentialMap[$targetKey]
-    if ($sourceMap.Contains($sourceKey)) {
-      Upsert-EnvLine $targetLines $targetKey ([string]$sourceMap[$sourceKey]) $false
     }
   }
 }
 
 $defaults = [ordered]@{
-  UNIFIED_PANEL_ENABLED = 'true'
-  PANEL_HOST = '127.0.0.1'
-  PANEL_PORT = '3030'
-  FISCAL_MODULE_ENABLED = 'true'
-  FISCAL_INTERNAL_HOST = '127.0.0.1'
-  FISCAL_INTERNAL_PORT = '3031'
+  FISCAL_HOST = '127.0.0.1'
+  FISCAL_PORT = '3031'
   FISCAL_DATA_DIRECTORY = './data/fiscal'
   FISCAL_DOCUMENT_DIRECTORY = './storage/fiscal-documents'
 }
 foreach ($key in $defaults.Keys) { Upsert-EnvLine $targetLines $key $defaults[$key] $false }
 
 [System.IO.File]::WriteAllLines($TargetEnv, $targetLines, [System.Text.UTF8Encoding]::new($false))
-Write-Host 'Configuração fiscal incorporada ao .env do PersonalizeProd.' -ForegroundColor Green
+Write-Host 'Configuração fiscal copiada sem alterar conexão, logs ou inicialização do bot.' -ForegroundColor Green
 Write-Host 'Migração concluída. Mantenha a pasta PersonalizeNF como backup até validar tudo.' -ForegroundColor Green
