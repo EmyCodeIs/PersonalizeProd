@@ -57,12 +57,10 @@ function commandAdminConfig() {
     allowedNumbers = splitList(process.env.ADMIN_WHATSAPP_NUMBERS);
     allowedChatIds = splitList(process.env.ADMIN_WHATSAPP_CHAT_IDS);
     source = 'admin_whatsapp';
-  } else {
-    allowedNumbers = splitList(process.env.ALLOWED_CLIENT_NUMBERS);
-    allowedChatIds = splitList(process.env.ALLOWED_CHAT_IDS);
-    source = 'allowed_clients';
   }
 
+  // ALLOWED_CLIENT_NUMBERS e ALLOWED_CHAT_IDS controlam escopo geral de
+  // atendimento e nunca concedem privilégios administrativos.
   return {
     allowedNumbers,
     allowedChatIds,
