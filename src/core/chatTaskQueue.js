@@ -175,18 +175,18 @@ class ChatTaskQueue {
     error.chatId = item.chatId;
     error.taskId = item.id;
 
-    // Libera somente a capacidade global. O lock do chat permanece até a tarefa
-    // terminar de verdade, evitando duas gravações simultâneas na mesma sessão.
+    // Libera somente a capacidade global. O lock do chat e as tarefas seguintes
+    // permanecem preservados até a operação real terminar, sem perder mensagens.
     this.releaseUnits(item);
     item.controller.abort(error);
-    const cancelled = this.cancelQueuedForChats([item.chatId], 'QUEUE_CHAT_QUARANTINED');
+    const waitingSameChat = this.queue.filter((queued) => queued.chatId === item.chatId).length;
     item.reject(error);
 
     decision('FILA', 'timeout_isolado', {
       chat: item.chatId,
       tarefa: item.id,
-      quantidade: cancelled,
-      resultado: 'capacidade_global_liberada_chat_mantido',
+      quantidade: waitingSameChat,
+      resultado: 'capacidade_global_liberada_chat_e_tarefas_preservados',
     }, 'warn');
     this.processNext();
   }
