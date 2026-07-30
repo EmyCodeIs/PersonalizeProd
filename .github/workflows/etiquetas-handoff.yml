@@ -6,6 +6,7 @@ on:
       - agent/fecha-sincronizacao-operacional
       - agent/fecha-etiquetas-handoff
       - agent/otimiza-runtime-banco
+      - agent/encerramento-health-real
   workflow_dispatch:
 
 permissions:
@@ -48,6 +49,7 @@ jobs:
       - name: Etiquetas e handoff
         run: |
           npm run test:handoff-policy
+          npm run test:handoff-sleep
           npm run test:handoff-history
           npm run test:handoff
           npm run test:seller-label-events

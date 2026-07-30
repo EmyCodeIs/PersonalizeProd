@@ -127,6 +127,29 @@ function clearBlock(clientId) {
   return true;
 }
 
+function listBlocks() {
+  purgeExpiredBlocks({ write: false });
+  return Object.entries(state.blocks || {}).map(([clientId, control]) => ({
+    clientId,
+    ...(normalizeBlock(control) || {}),
+  }));
+}
+
+function stats() {
+  const blocks = listBlocks();
+  const byReason = {};
+  for (const block of blocks) {
+    const reason = String(block.reason || 'human_block');
+    byReason[reason] = Number(byReason[reason] || 0) + 1;
+  }
+  return {
+    total: blocks.length,
+    persistent: blocks.filter((block) => !block.blockedUntil).length,
+    temporary: blocks.filter((block) => Boolean(block.blockedUntil)).length,
+    byReason,
+  };
+}
+
 function resetAll() {
   state.blocks = {};
   persist();
@@ -139,6 +162,8 @@ module.exports = {
   getBlock,
   setBlock,
   clearBlock,
+  listBlocks,
+  stats,
   purgeExpiredBlocks,
   resetAll,
   _test: {
