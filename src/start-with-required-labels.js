@@ -17,17 +17,22 @@ if (!configuredWelcomeUrl || configuredWelcomeUrl === LEGACY_WELCOME_URL) {
   process.env.BEM_VINDOS_LINK_URL = INSTAGRAM_WELCOME_URL;
 }
 
-const duplicateRemovalRequested = ['1', 'true', 'yes', 'sim', 'on']
-  .includes(String(process.env.LABEL_MAINTENANCE_AUTO_REMOVE_DUPLICATES || '').trim().toLowerCase());
-const duplicateRemovalConfirmed = String(process.env.LABEL_MAINTENANCE_CONFIRM_DELETE || '').trim()
+const confirmedLabelDeletion = String(process.env.LABEL_MAINTENANCE_CONFIRM_DELETE || '').trim()
   === 'CONFIRMAR_EXCLUSAO';
+const automaticLabelCleanupFlags = [
+  ['LABEL_MAINTENANCE_AUTO_REMOVE_DUPLICATES', 'as duplicatas'],
+  ['LABEL_MAINTENANCE_AUTO_REMOVE_CORRUPT_SYMBOLS', 'as etiquetas corrompidas por símbolos'],
+];
 
-if (duplicateRemovalRequested && !duplicateRemovalConfirmed) {
-  process.env.LABEL_MAINTENANCE_AUTO_REMOVE_DUPLICATES = 'false';
-  console.warn(
-    '[LISTAS][SEGURANÇA] remoção automática solicitada, mas não confirmada; '
-    + 'as duplicatas serão somente auditadas.',
-  );
+for (const [flag, description] of automaticLabelCleanupFlags) {
+  const requested = ['1', 'true', 'yes', 'sim', 'on']
+    .includes(String(process.env[flag] || '').trim().toLowerCase());
+  if (requested && !confirmedLabelDeletion) {
+    process.env[flag] = 'false';
+    console.warn(
+      `[LISTAS][SEGURANÇA] remoção automática solicitada, mas não confirmada; ${description} serão somente auditadas.`,
+    );
+  }
 }
 
 // Aguarda a sincronização real do WhatsApp antes de etiquetas, recuperação e pronto.
@@ -51,6 +56,9 @@ require('./core/operationalLabelPolicyPreload');
 require('./core/exclusiveServiceLabelsPreload');
 // Impede reaplicações da mesma etiqueta durante o fluxo, finalização e reinícios.
 require('./core/serviceLabelAssignmentPreload');
+// Audita etiquetas globais com caracteres corrompidos e remove somente quando
+// a flag e a confirmação explícita estiverem configuradas.
+require('./core/corruptLabelMaintenance');
 
 // Instala o catálogo nativo. O catálogo aguarda estabilização; o texto seguinte
 // precisa ser confirmado pelo canal antes de a lista de acrílico ser liberada.
