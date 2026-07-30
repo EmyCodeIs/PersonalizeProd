@@ -49,6 +49,8 @@ function createConfig() {
   const demoMode = bool(process.env.DEMO_MODE, true);
   const allowProduction = bool(process.env.ALLOW_PRODUCTION, false);
   const runtimeMode = demoMode ? 'demonstracao' : environment;
+  const panelSessionSecret = text(process.env.PANEL_SESSION_SECRET || process.env.SESSION_SECRET);
+  const panelAdminPassword = text(process.env.PANEL_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD);
   const focusToken = environment === 'producao'
     ? (process.env.FOCUS_TOKEN_PRODUCAO || process.env.FOCUS_TOKEN || '')
     : (process.env.FOCUS_TOKEN_HOMOLOGACAO || process.env.FOCUS_TOKEN || '');
@@ -68,14 +70,12 @@ function createConfig() {
     throw error;
   }
   if (!demoMode && environment === 'producao') {
-    const sessionSecret = text(process.env.SESSION_SECRET);
-    const adminPassword = text(process.env.ADMIN_PASSWORD);
-    if (sessionSecret.length < 32) {
-      const error = new Error('Produção exige SESSION_SECRET com pelo menos 32 caracteres.');
+    if (panelSessionSecret.length < 32) {
+      const error = new Error('Produção exige PANEL_SESSION_SECRET com pelo menos 32 caracteres.');
       error.code = 'PRODUCTION_SESSION_SECRET_WEAK';
       throw error;
     }
-    if (adminPassword.length < 8 || ['2580', 'mudeessasenha123!', 'troque-a-senha-inicial'].includes(adminPassword.toLowerCase())) {
+    if (panelAdminPassword.length < 8 || ['2580', 'mudeessasenha123!', 'troque-a-senha-inicial', 'troque-por-uma-senha-forte'].includes(panelAdminPassword.toLowerCase())) {
       const error = new Error('Produção exige uma senha administrativa forte e diferente da senha inicial.');
       error.code = 'PRODUCTION_ADMIN_PASSWORD_WEAK';
       throw error;
@@ -93,11 +93,11 @@ function createConfig() {
     host: process.env.FISCAL_INTERNAL_HOST || '127.0.0.1',
     port: number(process.env.FISCAL_INTERNAL_PORT, 3031),
     appName: process.env.FISCAL_APP_NAME || 'Personalize NF',
-    sessionSecret: process.env.SESSION_SECRET || 'desenvolvimento-altere-esta-chave',
+    sessionSecret: panelSessionSecret || 'desenvolvimento-altere-esta-chave',
     admin: {
-      name: process.env.ADMIN_NAME || 'Administrador',
-      email: String(process.env.ADMIN_EMAIL || 'admin@personalize.local').toLowerCase(),
-      password: process.env.ADMIN_PASSWORD || 'MudeEssaSenha123!',
+      name: process.env.PANEL_ADMIN_NAME || process.env.ADMIN_NAME || 'Administrador',
+      email: String(process.env.PANEL_ADMIN_EMAIL || process.env.ADMIN_EMAIL || 'contato@personalizeseuambiente.com.br').toLowerCase(),
+      password: panelAdminPassword || 'MudeEssaSenha123!',
     },
     demoMode,
     allowProduction,
