@@ -17,7 +17,7 @@
     "test:seller-label-events": "node scripts/test-seller-label-events.js",
     "test:exclusive-labels": "node scripts/test-exclusive-service-labels.js",
     "test:service-label-once": "node scripts/test-service-label-once.js",
-    "test:seller-label-migration": "node scripts/test-seller-label-migration.js",
+    "test:seller-label-migration": "node scripts/test-seller-label-migration.js --apply --confirm=MIGRAR_ETIQUETAS_VENDEDORES",
     "test:reset-handoff": "node scripts/test-reset-command-handoff.js",
     "test:reset-labels": "node scripts/test-reset-label-preservation.js",
     "test:commands": "node scripts/test-command-access.js",
@@ -47,7 +47,8 @@
     "vps:start": "bash scripts/start-vps-whatsapp.sh",
     "vps:prepare": "node scripts/prepare-vps-env.js",
     "vps:deploy": "bash scripts/deploy-vps-ready.sh",
-    "test:fiscal-integration": "node scripts/test-fiscal-integration.js"
+    "test:fiscal-integration": "node scripts/test-fiscal-integration.js",
+    "fiscal:focus:check": "node scripts/check-focus-homologacao-real.js"
   },
   "dependencies": {
     "@novnc/novnc": "^1.5.0",
