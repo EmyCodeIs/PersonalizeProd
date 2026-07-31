@@ -2,20 +2,19 @@
 
 (() => {
   if (!window.__PERSONALIZE_FRONTEND_PREVIEW__ || !window.MutationObserver) return;
+
   const NativeMutationObserver = window.MutationObserver;
 
-  window.MutationObserver = class PreviewMutationObserver extends NativeMutationObserver {
-    constructor(callback) {
-      super((records, observer) => {
-        const onlyPreviewWrites = records.length > 0 && records.every((record) => {
-          const target = record.target?.nodeType === 1 ? record.target : record.target?.parentElement;
-          if (!target?.closest) return false;
-          return Boolean(target.closest('.content[data-preview-route], .sidebar-nav, .mobile-nav'));
-        });
-        if (!onlyPreviewWrites) callback(records, observer);
-      });
-    }
-  };
+  class PreviewNoopMutationObserver {
+    observe() {}
+    disconnect() {}
+    takeRecords() { return []; }
+  }
+
+  // O workspace da prévia já renderiza no carregamento e em cada hashchange.
+  // Desativar somente o observer criado por ele evita o ciclo:
+  // render -> mutation -> render -> mutation.
+  window.MutationObserver = PreviewNoopMutationObserver;
 
   window.setTimeout(() => {
     window.MutationObserver = NativeMutationObserver;
