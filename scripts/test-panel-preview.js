@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 const { spawn, spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
@@ -47,10 +48,34 @@ assert.doesNotMatch(previewHtml, /src="\/app\.js"/);
 assert.match(mode, /__PERSONALIZE_FRONTEND_PREVIEW__/);
 assert.match(shell, /Emilly Santos/);
 assert.match(shell, /Administrador/);
-assert.match(observerGuard, /onlyPreviewWrites/);
-assert.match(observerGuard, /NativeMutationObserver/);
+assert.match(observerGuard, /PreviewNoopMutationObserver/);
+assert.match(observerGuard, /render -> mutation -> render/);
+assert.match(workspace, /window\.addEventListener\('hashchange',schedule\)/);
 assert.match(connectionPage, /connection-layout/);
 assert.match(connectionPage, /QR demonstrativo/);
+
+// O observer criado pelo workspace da prévia precisa ser inerte. Caso contrário,
+// cada render altera o título e dispara um novo render, substituindo links durante o clique.
+let restoreNativeObserver = null;
+class FakeNativeMutationObserver {
+  constructor(callback) { this.callback = callback; }
+  observe() { this.observing = true; }
+  disconnect() { this.observing = false; }
+  takeRecords() { return ['native']; }
+}
+const fakeWindow = {
+  __PERSONALIZE_FRONTEND_PREVIEW__: true,
+  MutationObserver: FakeNativeMutationObserver,
+  setTimeout(callback) { restoreNativeObserver = callback; },
+};
+vm.runInNewContext(observerGuard, { window: fakeWindow });
+assert.notEqual(fakeWindow.MutationObserver, FakeNativeMutationObserver);
+const previewObserver = new fakeWindow.MutationObserver(() => {});
+previewObserver.observe({});
+assert.deepEqual(previewObserver.takeRecords(), []);
+assert.equal(typeof restoreNativeObserver, 'function');
+restoreNativeObserver();
+assert.equal(fakeWindow.MutationObserver, FakeNativeMutationObserver);
 
 for (const route of ['#\/leads', '#\/conexao', '#\/notas', '#\/integracao-fiscal', '#\/configuracoes']) {
   assert.match(workspace, new RegExp(route));
@@ -108,7 +133,7 @@ async function waitForHealth() {
     const response = await fetch(`http://127.0.0.1:${port}/api/auth/me`);
     const payload = await response.json();
     assert.equal(payload.user.role, 'admin');
-    console.log('Prévia do painel: módulos, conexão visual e servidor isolado validados.');
+    console.log('Prévia do painel: navegação, módulos, conexão visual e servidor isolado validados.');
   } finally {
     child.kill('SIGTERM');
   }
