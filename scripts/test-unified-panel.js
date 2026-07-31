@@ -30,7 +30,22 @@ try {
   assert.equal(snapshot.pairingCode, 'ABCD1234');
   assert.match(snapshot.imageSrc, /^data:image\/png/);
 
-  console.log('Painel unificado: leitura de status validada.');
+  const panelRoot = path.resolve(__dirname, '..', 'public', 'panel');
+  const indexHtml = fs.readFileSync(path.join(panelRoot, 'index.html'), 'utf8');
+  const connectionScript = fs.readFileSync(path.join(panelRoot, 'connection-visual.js'), 'utf8');
+  const connectionStyles = fs.readFileSync(path.join(panelRoot, 'connection-visual.css'), 'utf8');
+
+  assert.match(indexHtml, /connection-visual\.css/);
+  assert.match(indexHtml, /connection-visual\.js/);
+  assert.match(connectionScript, /Escaneie para entrar/);
+  assert.match(connectionScript, /Número de telefone/);
+  assert.match(connectionScript, /data-action="refresh-connection"/);
+  assert.match(connectionScript, /MutationObserver/);
+  assert.match(connectionStyles, /\.connection-whatsapp-card/);
+  assert.match(connectionStyles, /\.connection-refresh-control/);
+  assert.match(connectionStyles, /\.connection-pairing-code/);
+
+  console.log('Painel unificado: leitura de status e padrão visual da conexão validados.');
 } finally {
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
 }
