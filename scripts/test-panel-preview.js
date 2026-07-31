@@ -70,7 +70,7 @@ vm.runInNewContext(observerGuard, { window: fakeWindow });
 assert.notEqual(fakeWindow.MutationObserver, FakeNativeMutationObserver);
 const previewObserver = new fakeWindow.MutationObserver(() => {});
 previewObserver.observe({});
-assert.deepEqual(previewObserver.takeRecords(), []);
+assert.equal(previewObserver.takeRecords().length, 0);
 assert.equal(typeof restoreNativeObserver, 'function');
 restoreNativeObserver();
 assert.equal(fakeWindow.MutationObserver, FakeNativeMutationObserver);
