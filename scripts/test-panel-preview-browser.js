@@ -80,6 +80,7 @@ async function waitForHealth() {
       assert.match(content, new RegExp(expectedText, 'i'));
     }
 
+    // Clique real no mesmo link usado pela lateral exibida ao usuário.
     await page.click('.sidebar-nav a[href="#/leads"]');
     await page.waitForFunction(() => window.location.hash === '#/leads');
     await page.waitForFunction(() => document.querySelector('.content')?.textContent?.includes('Parados há 24h'));
