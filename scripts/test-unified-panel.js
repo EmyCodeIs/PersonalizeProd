@@ -34,9 +34,11 @@ try {
   const indexHtml = fs.readFileSync(path.join(panelRoot, 'index.html'), 'utf8');
   const connectionScript = fs.readFileSync(path.join(panelRoot, 'connection-visual.js'), 'utf8');
   const connectionStyles = fs.readFileSync(path.join(panelRoot, 'connection-visual.css'), 'utf8');
+  const sidebarUserScript = fs.readFileSync(path.join(panelRoot, 'sidebar-user.js'), 'utf8');
 
   assert.match(indexHtml, /connection-visual\.css/);
   assert.match(indexHtml, /connection-visual\.js/);
+  assert.match(indexHtml, /sidebar-user\.js/);
   assert.match(connectionScript, /Escaneie para entrar/);
   assert.match(connectionScript, /Número de telefone/);
   assert.match(connectionScript, /data-action="refresh-connection"/);
@@ -44,8 +46,13 @@ try {
   assert.match(connectionStyles, /\.connection-whatsapp-card/);
   assert.match(connectionStyles, /\.connection-refresh-control/);
   assert.match(connectionStyles, /\.connection-pairing-code/);
+  assert.match(sidebarUserScript, /\/api\/auth\/me/);
+  assert.match(sidebarUserScript, /Administrador/);
+  assert.match(sidebarUserScript, /\.user-chip/);
+  assert.match(sidebarUserScript, /initials/);
+  assert.doesNotMatch(sidebarUserScript, /currentUser\?\.email/);
 
-  console.log('Painel unificado: leitura de status e padrão visual da conexão validados.');
+  console.log('Painel unificado: conexão visual e identificação do usuário validadas.');
 } finally {
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
 }
