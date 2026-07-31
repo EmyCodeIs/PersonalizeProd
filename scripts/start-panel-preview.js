@@ -8,6 +8,7 @@ const { URL } = require('node:url');
 const host = String(process.env.PANEL_PREVIEW_HOST || '127.0.0.1');
 const port = Math.max(1, Number(process.env.PANEL_PREVIEW_PORT || 4173));
 const publicRoot = path.resolve(process.cwd(), 'public', 'panel');
+const previewDocument = path.join(publicRoot, 'preview.html');
 
 function qrDataUri() {
   const cells = 29;
@@ -53,9 +54,11 @@ function mime(filePath) {
 }
 
 function serveStatic(response, pathname) {
-  const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
+  const relative = pathname === '/' ? 'preview.html' : pathname.replace(/^\/+/, '');
   const target = path.resolve(publicRoot, relative);
-  const filePath = target.startsWith(publicRoot) && fs.existsSync(target) && fs.statSync(target).isFile() ? target : path.join(publicRoot, 'index.html');
+  const filePath = target.startsWith(publicRoot) && fs.existsSync(target) && fs.statSync(target).isFile()
+    ? target
+    : previewDocument;
   const stats = fs.statSync(filePath);
   response.writeHead(200, { 'Content-Type': mime(filePath), 'Content-Length': stats.size, 'Cache-Control': 'no-store' });
   fs.createReadStream(filePath).pipe(response);
