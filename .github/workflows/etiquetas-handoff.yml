@@ -7,6 +7,7 @@ on:
       - agent/fecha-etiquetas-handoff
       - agent/otimiza-runtime-banco
       - agent/encerramento-health-real
+      - agent/corrige-qrcode-painel
   workflow_dispatch:
 
 permissions:
