@@ -54,8 +54,6 @@ assert.match(workspace, /window\.addEventListener\('hashchange',schedule\)/);
 assert.match(connectionPage, /connection-layout/);
 assert.match(connectionPage, /QR demonstrativo/);
 
-// O observer criado pelo workspace da prévia precisa ser inerte. Caso contrário,
-// cada render altera o título e dispara um novo render, substituindo links durante o clique.
 let restoreNativeObserver = null;
 class FakeNativeMutationObserver {
   constructor(callback) { this.callback = callback; }
