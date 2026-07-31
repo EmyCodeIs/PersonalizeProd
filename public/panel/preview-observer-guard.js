@@ -6,9 +6,21 @@
   const NativeMutationObserver = window.MutationObserver;
 
   class PreviewNoopMutationObserver {
-    observe() {}
-    disconnect() {}
-    takeRecords() { return []; }
+    constructor() {
+      this.observing = false;
+    }
+
+    observe() {
+      this.observing = true;
+    }
+
+    disconnect() {
+      this.observing = false;
+    }
+
+    takeRecords() {
+      return [];
+    }
   }
 
   // O workspace da prévia já renderiza no carregamento e em cada hashchange.
