@@ -21,7 +21,6 @@ function resolveBrowserExecutable() {
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
     'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
   ].filter(Boolean);
-
   return candidates.find((candidate) => fs.existsSync(candidate)) || null;
 }
 
@@ -52,16 +51,10 @@ async function waitForHealth() {
 
   try {
     await waitForHealth();
-
     const executablePath = resolveBrowserExecutable();
     assert.ok(executablePath, 'Chrome/Chromium do sistema não foi encontrado para o teste real da prévia.');
 
-    browser = await puppeteer.launch({
-      executablePath,
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-
+    browser = await puppeteer.launch({ executablePath, headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
     const page = await browser.newPage();
     await page.setViewport({ width: 1440, height: 900 });
     page.on('console', (message) => browserLogs.push(`[console:${message.type()}] ${message.text()}`));
@@ -81,24 +74,12 @@ async function waitForHealth() {
 
     for (const [hash, expectedText] of routes) {
       await page.evaluate((nextHash) => { window.location.hash = nextHash; }, hash);
-      await page.waitForFunction(
-        (text) => document.querySelector('.content')?.textContent?.includes(text),
-        { timeout: 2500 },
-        expectedText,
-      );
-
-      const state = await page.evaluate(() => ({
-        hash: window.location.hash || '#/',
-        title: document.querySelector('.topbar h1')?.textContent || '',
-        content: document.querySelector('.content')?.textContent?.trim() || '',
-        route: document.querySelector('.content')?.dataset.previewRoute || '',
-      }));
-
-      assert.ok(state.content.length > 20, `A rota ${hash} permaneceu sem conteúdo.`);
-      assert.match(state.content, new RegExp(expectedText, 'i'));
+      await page.waitForFunction((text) => document.querySelector('.content')?.textContent?.includes(text), { timeout: 2500 }, expectedText);
+      const content = await page.$eval('.content', (node) => node.textContent.trim());
+      assert.ok(content.length > 20, `A rota ${hash} permaneceu sem conteúdo.`);
+      assert.match(content, new RegExp(expectedText, 'i'));
     }
 
-    // Validação por clique real, igual ao uso feito no painel local.
     await page.click('.sidebar-nav a[href="#/leads"]');
     await page.waitForFunction(() => window.location.hash === '#/leads');
     await page.waitForFunction(() => document.querySelector('.content')?.textContent?.includes('Parados há 24h'));
