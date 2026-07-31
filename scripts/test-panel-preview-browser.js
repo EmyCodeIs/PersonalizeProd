@@ -98,6 +98,7 @@ async function waitForHealth() {
       assert.match(state.content, new RegExp(expectedText, 'i'));
     }
 
+    // Validação por clique real, igual ao uso feito no painel local.
     await page.click('.sidebar-nav a[href="#/leads"]');
     await page.waitForFunction(() => window.location.hash === '#/leads');
     await page.waitForFunction(() => document.querySelector('.content')?.textContent?.includes('Parados há 24h'));
