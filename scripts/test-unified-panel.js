@@ -35,10 +35,15 @@ try {
   const connectionScript = fs.readFileSync(path.join(panelRoot, 'connection-visual.js'), 'utf8');
   const connectionStyles = fs.readFileSync(path.join(panelRoot, 'connection-visual.css'), 'utf8');
   const sidebarUserScript = fs.readFileSync(path.join(panelRoot, 'sidebar-user.js'), 'utf8');
+  const sidebarNavigationScript = fs.readFileSync(path.join(panelRoot, 'sidebar-navigation.js'), 'utf8');
+  const sidebarNavigationStyles = fs.readFileSync(path.join(panelRoot, 'sidebar-navigation.css'), 'utf8');
 
   assert.match(indexHtml, /connection-visual\.css/);
   assert.match(indexHtml, /connection-visual\.js/);
   assert.match(indexHtml, /sidebar-user\.js/);
+  assert.match(indexHtml, /sidebar-navigation\.css/);
+  assert.match(indexHtml, /sidebar-navigation\.js/);
+
   assert.match(connectionScript, /Escaneie para entrar/);
   assert.match(connectionScript, /Número de telefone/);
   assert.match(connectionScript, /data-action="refresh-connection"/);
@@ -46,13 +51,29 @@ try {
   assert.match(connectionStyles, /\.connection-whatsapp-card/);
   assert.match(connectionStyles, /\.connection-refresh-control/);
   assert.match(connectionStyles, /\.connection-pairing-code/);
+
   assert.match(sidebarUserScript, /\/api\/auth\/me/);
   assert.match(sidebarUserScript, /Administrador/);
   assert.match(sidebarUserScript, /\.user-chip/);
   assert.match(sidebarUserScript, /initials/);
   assert.doesNotMatch(sidebarUserScript, /currentUser\?\.email/);
 
-  console.log('Painel unificado: conexão visual e identificação do usuário validadas.');
+  for (const group of ['Geral', 'Atendimento', 'Conexões', 'Fiscal']) {
+    assert.match(sidebarNavigationScript, new RegExp(`navGroup\\('${group}'`));
+  }
+
+  assert.match(sidebarNavigationScript, /#\/leads/);
+  assert.match(sidebarNavigationScript, /#\/conexao/);
+  assert.match(sidebarNavigationScript, /#\/integracao-fiscal/);
+  assert.match(sidebarNavigationScript, /#\/notas/);
+  assert.match(sidebarNavigationScript, /<svg viewBox=/);
+  assert.match(sidebarNavigationScript, /Área preparada para o módulo de leads/);
+  assert.match(sidebarNavigationScript, /Módulo fiscal conectado ao painel/);
+  assert.match(sidebarNavigationStyles, /\.nav-group-label/);
+  assert.match(sidebarNavigationStyles, /grid-template-columns: repeat\(5, 1fr\)/);
+  assert.match(sidebarNavigationStyles, /\.module-status-card/);
+
+  console.log('Painel unificado: conexão, usuário e navegação modular validados.');
 } finally {
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
 }
