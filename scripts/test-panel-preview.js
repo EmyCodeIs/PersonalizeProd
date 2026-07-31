@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
 const panelRoot = path.join(root, 'public', 'panel');
@@ -15,7 +15,20 @@ const workspace = fs.readFileSync(path.join(panelRoot, 'preview-workspace.js'), 
 const connectionPage = fs.readFileSync(path.join(panelRoot, 'preview-connection-page.js'), 'utf8');
 const observerGuard = fs.readFileSync(path.join(panelRoot, 'preview-observer-guard.js'), 'utf8');
 const styles = fs.readFileSync(path.join(panelRoot, 'preview-workspace.css'), 'utf8');
-const serverSource = fs.readFileSync(path.join(root, 'scripts', 'start-panel-preview.js'), 'utf8');
+const serverPath = path.join(root, 'scripts', 'start-panel-preview.js');
+const serverSource = fs.readFileSync(serverPath, 'utf8');
+
+for (const script of [
+  path.join(panelRoot, 'preview-mode.js'),
+  path.join(panelRoot, 'preview-shell.js'),
+  path.join(panelRoot, 'preview-observer-guard.js'),
+  path.join(panelRoot, 'preview-workspace.js'),
+  path.join(panelRoot, 'preview-connection-page.js'),
+  serverPath,
+]) {
+  const result = spawnSync(process.execPath, ['--check', script], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, `Erro de sintaxe em ${path.relative(root, script)}:\n${result.stderr || result.stdout}`);
+}
 
 assert.doesNotMatch(productionIndex, /preview-(?:mode|shell|workspace|connection|observer)/);
 assert.match(productionIndex, /app\.js/);
@@ -59,7 +72,7 @@ assert.match(serverSource, /frontend-preview/);
 assert.match(serverSource, /preview\.html/);
 
 const port = 4197;
-const child = spawn(process.execPath, [path.join(root, 'scripts', 'start-panel-preview.js')], {
+const child = spawn(process.execPath, [serverPath], {
   cwd: root,
   env: { ...process.env, PANEL_PREVIEW_PORT: String(port) },
   stdio: ['ignore', 'pipe', 'pipe'],
