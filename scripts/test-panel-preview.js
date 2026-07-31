@@ -7,16 +7,37 @@ const { spawn } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
 const panelRoot = path.join(root, 'public', 'panel');
-const index = fs.readFileSync(path.join(panelRoot, 'index.html'), 'utf8');
+const productionIndex = fs.readFileSync(path.join(panelRoot, 'index.html'), 'utf8');
+const previewHtml = fs.readFileSync(path.join(panelRoot, 'preview.html'), 'utf8');
 const mode = fs.readFileSync(path.join(panelRoot, 'preview-mode.js'), 'utf8');
+const shell = fs.readFileSync(path.join(panelRoot, 'preview-shell.js'), 'utf8');
 const workspace = fs.readFileSync(path.join(panelRoot, 'preview-workspace.js'), 'utf8');
+const connectionPage = fs.readFileSync(path.join(panelRoot, 'preview-connection-page.js'), 'utf8');
+const observerGuard = fs.readFileSync(path.join(panelRoot, 'preview-observer-guard.js'), 'utf8');
 const styles = fs.readFileSync(path.join(panelRoot, 'preview-workspace.css'), 'utf8');
 const serverSource = fs.readFileSync(path.join(root, 'scripts', 'start-panel-preview.js'), 'utf8');
 
-assert.match(index, /preview-mode\.js/);
-assert.match(index, /preview-workspace\.css/);
-assert.match(index, /preview-workspace\.js/);
+assert.doesNotMatch(productionIndex, /preview-(?:mode|shell|workspace|connection|observer)/);
+assert.match(productionIndex, /app\.js/);
+
+for (const asset of [
+  'preview-mode.js',
+  'preview-shell.js',
+  'preview-observer-guard.js',
+  'preview-workspace.js',
+  'preview-connection-page.js',
+  'preview-workspace.css',
+]) {
+  assert.match(previewHtml, new RegExp(asset.replace('.', '\\.')));
+}
+assert.doesNotMatch(previewHtml, /src="\/app\.js"/);
 assert.match(mode, /__PERSONALIZE_FRONTEND_PREVIEW__/);
+assert.match(shell, /Emilly Santos/);
+assert.match(shell, /Administrador/);
+assert.match(observerGuard, /onlyPreviewWrites/);
+assert.match(observerGuard, /NativeMutationObserver/);
+assert.match(connectionPage, /connection-layout/);
+assert.match(connectionPage, /QR demonstrativo/);
 
 for (const route of ['#\/leads', '#\/conexao', '#\/notas', '#\/integracao-fiscal', '#\/configuracoes']) {
   assert.match(workspace, new RegExp(route));
@@ -35,6 +56,7 @@ assert.match(styles, /\.pw-drawer/);
 assert.match(styles, /@media\(max-width:760px\)/);
 assert.doesNotMatch(serverSource, /wppconnect|FocusClient|start-with-required-labels/i);
 assert.match(serverSource, /frontend-preview/);
+assert.match(serverSource, /preview\.html/);
 
 const port = 4197;
 const child = spawn(process.execPath, [path.join(root, 'scripts', 'start-panel-preview.js')], {
@@ -63,10 +85,17 @@ async function waitForHealth() {
 (async () => {
   try {
     await waitForHealth();
+
+    const pageResponse = await fetch(`http://127.0.0.1:${port}/`);
+    const page = await pageResponse.text();
+    assert.match(page, /Prévia do Painel Personalize/);
+    assert.match(page, /preview-workspace\.js/);
+    assert.doesNotMatch(page, /src="\/app\.js"/);
+
     const response = await fetch(`http://127.0.0.1:${port}/api/auth/me`);
     const payload = await response.json();
     assert.equal(payload.user.role, 'admin');
-    console.log('Prévia do painel: rotas, módulos e servidor isolado validados.');
+    console.log('Prévia do painel: módulos, conexão visual e servidor isolado validados.');
   } finally {
     child.kill('SIGTERM');
   }
