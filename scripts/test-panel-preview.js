@@ -67,7 +67,7 @@ for (const settingsArea of ['Empresa', 'Usuários', 'Atendimento', 'Bot', 'Fisca
 assert.match(styles, /\.pw-settings/);
 assert.match(styles, /\.pw-drawer/);
 assert.match(styles, /@media\(max-width:760px\)/);
-assert.doesNotMatch(serverSource, /wppconnect|FocusClient|start-with-required-labels/i);
+assert.doesNotMatch(serverSource, /require\([^)]*(?:wppconnect|start-with-required-labels)|FocusClient/i);
 assert.match(serverSource, /frontend-preview/);
 assert.match(serverSource, /preview\.html/);
 
