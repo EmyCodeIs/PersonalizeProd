@@ -159,6 +159,8 @@ function startLifecycleMonitor() {
 }
 
 function attachChannelTools(channel) {
+  global.__personalizeActiveChannel = channel;
+  try { require('../services/qrAdminServer').setQrAdminChannel(channel); } catch (_) {}
   channel.__runConversationCursorRecovery = async (reason = 'manual') => {
     const staged = await Recovery.stageUnreadMessages({ channel });
     const recovered = await Recovery.recoverStaged(channel, `cursor-${reason}`);
