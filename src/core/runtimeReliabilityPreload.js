@@ -168,6 +168,12 @@ function historyGuardCacheKey(clientId) {
   return String(Identity.getSessionKey(clientId) || clientId || '').trim();
 }
 
+function checkpointSignature(clientId) {
+  const checkpoint = BotActivity.getLastBotOutbound(clientId);
+  if (!checkpoint) return 'none';
+  return [checkpoint.type || '-', checkpoint.at || '-', checkpoint.messageId || '-'].join('|');
+}
+
 function readHistoryGuardCache(clientId) {
   const key = historyGuardCacheKey(clientId);
   if (!key) return null;
@@ -175,7 +181,9 @@ function readHistoryGuardCache(clientId) {
   if (!entry) return null;
 
   const ttlMs = Math.max(15000, Number(env.runtimeCacheTtlMs || 120000));
-  if ((Date.now() - Number(entry.checkedAt || 0)) > ttlMs) {
+  const expired = (Date.now() - Number(entry.checkedAt || 0)) > ttlMs;
+  const checkpointChanged = entry.checkpointSignature !== checkpointSignature(clientId);
+  if (expired || checkpointChanged) {
     historicalHumanGuardCache.delete(key);
     return null;
   }
@@ -188,9 +196,16 @@ function writeHistoryGuardCache(clientId, value) {
   if (!key) return value;
   historicalHumanGuardCache.set(key, {
     checkedAt: Date.now(),
+    checkpointSignature: checkpointSignature(clientId),
     value,
   });
   return value;
+}
+
+function clearHistoryGuardCache(clientId) {
+  const key = historyGuardCacheKey(clientId);
+  if (!key) return false;
+  return historicalHumanGuardCache.delete(key);
 }
 
 async function readConversationHistory(client, clientId) {
@@ -349,39 +364,6 @@ async function inspectUnreadRecovery(client, clientId) {
   return { eligible: true, reason: inspection.reason };
 }
 
-function installPersistentHumanHistory() {
-  if (HumanControl.__persistentHumanHistoryInstalled) return;
-
-  const originalSetBlock = HumanControl.setBlock.bind(HumanControl);
-  HumanControl.setBlock = function setPersistentHumanBlock(clientId, payload = {}) {
-    const reason = String(payload?.reason || '').trim();
-    const permanentReason = [
-      'manual_outbound_message',
-      'manual_outbound_history',
-      'seller_label',
-    ].includes(reason);
-    return originalSetBlock(clientId, {
-      ...payload,
-      persistent: permanentReason ? true : payload.persistent,
-    });
-  };
-
-  const originalGetBlock = HumanControl.getBlock.bind(HumanControl);
-  HumanControl.getBlock = function getPersistentHumanBlock(clientId) {
-    const result = originalGetBlock(clientId);
-    const control = result?.control;
-    if (result?.blocked
-      && ['manual_outbound_message', 'manual_outbound_history', 'seller_label'].includes(String(control?.reason || ''))
-      && control?.blockedUntil) {
-      const migrated = originalSetBlock(clientId, { ...control, persistent: true });
-      return { blocked: true, control: migrated };
-    }
-    return result;
-  };
-
-  HumanControl.__persistentHumanHistoryInstalled = true;
-}
-
 function installBotActivityTracking() {
   if (OutboundTracker.prototype.__botActivityTrackingInstalled) return;
   const originalConfirm = OutboundTracker.prototype.confirm;
@@ -475,16 +457,12 @@ function installUnreadRecoveryGuard() {
 function installHistoricalHumanGuard() {
   if (SellerHandoff.__historicalHumanGuardInstalled) return;
 
-  const originalGetAutomationBlock = SellerHandoff.getAutomationBlock.bind(SellerHandoff);
-  SellerHandoff.getAutomationBlock = async function getAutomationBlockWithHistory(channel, clientId) {
-    const current = await originalGetAutomationBlock(channel, clientId);
-    if (current?.blocked) return current;
-
+  SellerHandoff.setSecondaryGuard(async (channel, clientId) => {
     const client = channel?.client;
-    if (!client) return current;
+    if (!client) return { blocked: false };
 
     const inspection = await inspectHistoricalHumanControl(client, clientId);
-    if (!inspection?.blocked) return current;
+    if (!inspection?.blocked) return { blocked: false, details: inspection };
 
     HumanControl.setBlock(clientId, {
       reason: 'manual_outbound_history',
@@ -500,40 +478,33 @@ function installHistoricalHumanGuard() {
       source: 'history_guard',
       details: inspection,
     };
-  };
+  });
 
   SellerHandoff.__historicalHumanGuardInstalled = true;
 }
 
-function installResetCleanup() {
-  if (Store.__botActivityResetInstalled || typeof Store.resetSystem !== 'function') return;
-  const originalResetSystem = Store.resetSystem.bind(Store);
-  Store.resetSystem = function resetSystemWithBotActivity(...args) {
-    const result = originalResetSystem(...args);
-    try { BotActivity.resetAll(); } catch (_) {}
-    return result;
-  };
-  Store.__botActivityResetInstalled = true;
-}
-
-installPersistentHumanHistory();
 installBotActivityTracking();
 installGratitudeReply();
 installUnreadRecoveryGuard();
 installHistoricalHumanGuard();
-installResetCleanup();
 
 console.log('[CONFIABILIDADE] agradecimentos=👍 | arte=buffer ampliado | não lidas=histórico humano protegido | recuperação=fila ponderada');
 
 module.exports = {
-  isShortAcknowledgement,
+  clearHistoryGuardCache,
   inspectUnreadRecovery,
+  isShortAcknowledgement,
   _test: {
+    checkpointSignature,
     extractMessageId,
     extractTimestampMs,
+    findManualOutboundAfterCheckpoint,
+    historicalHumanGuardCache,
     isVisibleOutgoing,
     normalizeIntentText,
     normalizeUnreadMessage,
+    readHistoryGuardCache,
     unreadKey,
+    writeHistoryGuardCache,
   },
 };
