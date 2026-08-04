@@ -1,0 +1,80 @@
+ETAPA 3 — CONNECTIONSUPERVISOR E SINCRONIZAÇÃO
+
+OBJETIVO
+Separar processo vivo de WhatsApp operacional, impedir processamento em SYNCING e recuperar travamentos sem apagar tokens.
+
+ESTADOS INTERNOS
+STARTING
+WAITING_QR
+AUTHENTICATING
+SYNCING
+READY
+DEGRADED
+DISCONNECTED
+RECOVERING
+FAILED
+
+REGRA CENTRAL
+Somente CONNECTED promove a conexão para READY.
+SYNCING, RESUMING, INCHAT, MAIN e NORMAL não liberam atendimento.
+
+CONFIGURAÇÃO PADRÃO
+WPP_DEVICE_SYNC_TIMEOUT_MS=180000
+CONNECTION_SYNC_TIMEOUT_MS=195000
+CONNECTION_PROBE_TIMEOUT_MS=10000
+CONNECTION_RECOVERY_ACTION_TIMEOUT_MS=15000
+CONNECTION_RECOVERY_DELAY_MS=5000
+CONNECTION_RECOVERY_COOLDOWN_MS=15000
+CONNECTION_MAX_RECOVERY_ATTEMPTS=3
+CONNECTION_EXIT_ON_FAILURE=true
+CONNECTION_EXIT_DELAY_MS=2500
+WPP_WAIT_FOR_READY_BEFORE_CHANNEL_RETURN=true
+WPP_READY_WAIT_TIMEOUT_MS=0
+CONNECTION_DEFER_RETRY_MS=3000
+
+RECUPERAÇÃO
+1. Consulta getConnectionState, isConnected e isMainReady.
+2. Em CONFLICT tenta useHere; nos demais casos inicia startPhoneWatchdog quando disponível.
+3. Se continuar indisponível, recarrega a página controlada pelo Puppeteer.
+4. Se todas as tentativas falharem, solicita saída controlada para o PM2 reiniciar o processo.
+5. Tokens não são apagados automaticamente.
+6. WAITING_QR nunca dispara reinício automático.
+
+GERAÇÕES
+Cada criação de canal recebe uma geração.
+Listeners antigos carregam a geração original e não podem alterar a conexão atual.
+
+INBOX
+Mensagens que chegam antes de READY são persistidas como FAILED_RETRYABLE com CONNECTION_NOT_READY.
+Essa espera não aumenta attempts.
+A busca de recuperáveis retorna vazia enquanto a conexão não está READY.
+Ao voltar para READY, a recuperação da Inbox é acionada imediatamente.
+
+BOOTSTRAP
+O createWppChannel aguarda READY antes de devolver o canal para:
+- inicialização de etiquetas;
+- recuperação de sessões ativas;
+- busca inicial de não lidas;
+- restante do bootstrap comercial.
+
+HEALTH
+GET /health/live
+Confirma apenas que o processo Node está vivo.
+
+GET /health/ready
+GET /health
+Retornam 200 somente quando o WhatsApp está READY; caso contrário retornam 503.
+
+GET /health/detail
+Exibe diagnóstico completo: geração, estado, raw state, última atividade, probes, recuperação, memória e Inbox.
+Pode ser protegido por QR_ADMIN_DETAIL_TOKEN.
+
+POST /recover
+Solicita uma rodada administrativa de recuperação e usa a mesma proteção de token.
+
+LIMITAÇÕES
+- O supervisor atua sobre uma instância PM2, que é o modelo atual da produção.
+- Reinício controlado depende do PM2 estar configurado para reiniciar o processo.
+- Uma falha dentro do wppconnect.create antes de o client ser devolvido ainda encerra a inicialização para o PM2 tentar novamente.
+- O ledger persistente de saídas continua fora desta etapa.
+- Nenhum token ou sessão é excluído automaticamente.
