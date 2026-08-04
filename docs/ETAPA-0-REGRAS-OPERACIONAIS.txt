@@ -1,0 +1,146 @@
+ETAPA 0 — REGRAS OPERACIONAIS CONGELADAS
+PersonalizeProd
+Data: 04/08/2026
+
+OBJETIVO
+
+Este arquivo define as regras que os testes automatizados devem proteger.
+Uma alteração futura só pode mudar estas regras mediante decisão explícita do projeto.
+
+1. ESTADOS DE CONEXÃO E RECUPERAÇÃO
+
+CONNECTED
+- Confirma que a conexão voltou.
+- Pode disparar recuperação de mensagens não lidas.
+
+SYNCING
+- Estado transitório.
+- Não representa bot pronto.
+- Não pode disparar recuperação.
+
+RESUMING
+- Estado transitório.
+- Não representa bot pronto.
+- Não pode disparar recuperação.
+
+DISCONNECTED, DISCONNECTEDMOBILE, CONFLICT, UNPAIRED e equivalentes
+- Marcam a conexão como interrompida.
+- A recuperação deve aguardar um CONNECTED posterior.
+
+2. ETIQUETAS OPERACIONAIS
+
+As seguintes etiquetas pertencem ao funcionamento interno do bot e não geram handoff:
+
+- Orçamento letreiros
+- Plotagens
+- Outros
+- Suporte
+
+Os nomes efetivos podem ser configurados no ambiente, mas a classificação continua sendo operacional.
+
+3. ETIQUETAS EXTERNAS
+
+Qualquer etiqueta que não seja operacional bloqueia a automação.
+
+Inclui:
+
+- etiqueta com nome exato de vendedor;
+- etiqueta manual;
+- etiqueta semelhante ao nome de vendedor;
+- etiqueta com a mesma cor de vendedor;
+- qualquer etiqueta externa desconhecida.
+
+A cor nunca identifica o vendedor. O vendedor só é identificado pelo nome exato.
+Quando o nome não é exato, a etiqueta continua bloqueando como manual_label.
+
+4. PERSISTÊNCIA DO HANDOFF
+
+Bloqueios gerados por:
+
+- seller_label;
+- manual_label;
+- manual_outbound_message;
+- manual_outbound_history;
+
+são persistentes.
+
+O bloqueio não expira automaticamente em 24 horas.
+
+5. REMOÇÃO DE ETIQUETA
+
+Remover uma etiqueta de vendedor ou uma etiqueta manual não reativa o bot.
+
+A remoção pode atualizar o estado visual do contato, mas o bloqueio interno permanece.
+
+A liberação só poderá ocorrer por:
+
+- reset administrativo autorizado;
+- ação administrativa explícita;
+- futura função “Liberar bot” no painel.
+
+6. MENSAGEM MANUAL
+
+Mensagem enviada manualmente pelo WhatsApp Business bloqueia o bot.
+
+Não geram handoff:
+
+- mensagem confirmadamente enviada pelo próprio bot;
+- comando administrativo autorizado;
+- operação interna de etiqueta.
+
+7. ALIASES DE CONTATO
+
+Os IDs @lid e @c.us do mesmo contato representam a mesma conversa operacional.
+
+Um bloqueio encontrado em qualquer alias deve ser herdado pelos demais.
+
+Falha ao resolver um @lid nunca pode ser interpretada como liberação do bot.
+
+8. FLUXO CONVERSACIONAL
+
+O teste automatizado de fluxo deve comprovar pelo menos:
+
+- início da conversa;
+- escolha do serviço;
+- avanço das etapas;
+- conclusão;
+- marcação como não lida para o vendedor;
+- silêncio do bot após o pré-atendimento concluído.
+
+O simulador interativo continua disponível separadamente por:
+
+npm run flow:simulate
+
+9. RECUPERAÇÃO DE NÃO LIDAS
+
+A recuperação:
+
+- só ocorre após CONNECTED;
+- utiliza debounce;
+- não deve executar varreduras duplicadas agendadas na mesma janela;
+- entrega mensagens recuperadas ao mesmo processador usado pelas mensagens ao vivo.
+
+Deduplicação persistente e cursor por conversa serão implementados nas etapas seguintes.
+
+10. TESTE OBRIGATÓRIO
+
+O comando oficial é:
+
+npm test
+
+Ele deve incluir:
+
+- sintaxe;
+- configuração;
+- fluxo automatizado;
+- sequência de letreiro;
+- prontidão;
+- reconexão e não lidas;
+- handoff;
+- eventos de etiquetas;
+- reset;
+- catálogo;
+- armazenamento;
+- proteção de browser e caches.
+
+Nenhuma versão deve ser promovida para produção com npm test falhando.

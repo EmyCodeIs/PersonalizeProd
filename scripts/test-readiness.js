@@ -118,7 +118,7 @@ async function run() {
     askOtherDescricao: 'Me conta qual serviço ou produto você precisa. Você também pode enviar uma imagem ou arquivo de referência.',
     askOtherReferencia: 'Você tem alguma medida, foto, referência ou detalhe importante? Pode enviar por texto ou como anexo.',
     askOtherPrazo: 'Tem algum prazo ou urgência para esse pedido?',
-    completedContactNote: 'Certo! Seu pedido foi registrado e encaminhado para nossa equipe. Em breve, um vendedor continuará o atendimento por aqui. 😊',
+    completedContactNote: 'Certo! Seu pedido foi registrado e encaminhado para nossa equipe. Em breve, um vendedor continuará o atendimento por aqui.',
     supportAsk: 'Certo, me explique sua demanda para que eu encaminhe ao nosso suporte.',
     supportForwarded: 'Certo, encaminhei sua mensagem para nossa equipe que em breve assumirá o atendimento. Aguarde por aqui. 🙂',
     supportNeedDetails: 'Pode me explicar o que aconteceu ou qual ajuda você precisa? Você também pode enviar imagem ou arquivo.',

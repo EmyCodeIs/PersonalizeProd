@@ -4,7 +4,7 @@ const SellerHandoff = require('./sellerHandoff');
 const HumanControl = require('../services/humanControlStore');
 const Identity = require('../services/contactIdentity');
 const { resolvePhoneJid } = require('./lidServiceLabelFix');
-const { findExactSellerLabel } = require('./vpsReadinessPreload');
+require('./vpsReadinessPreload');
 const { env } = require('../config/env');
 
 function normalizeChatId(value) {
@@ -64,9 +64,10 @@ function installSellerAliasHandoff() {
   if (SellerHandoff.__sellerAliasHandoffInstalled) return;
 
   const inspectChatLabels = SellerHandoff?._test?.inspectChatLabels;
-  if (typeof inspectChatLabels !== 'function') return;
+  const findLabelBlockMatch = SellerHandoff?._test?.findSellerLabelMatch;
+  if (typeof inspectChatLabels !== 'function' || typeof findLabelBlockMatch !== 'function') return;
 
-  SellerHandoff.detectSellerLabelAssignment = async function detectSellerAcrossAliases(channel, clientId) {
+  SellerHandoff.detectSellerLabelAssignment = async function detectLabelsAcrossAliases(channel, clientId) {
     if (!env.sellerLabelBlockingEnabled || !channel?.client) {
       return {
         assigned: false,
@@ -90,12 +91,12 @@ function installSellerAliasHandoff() {
         inspectedPhoneAlias = true;
       }
 
-      const match = findExactSellerLabel(inspection?.items || []);
+      const match = findLabelBlockMatch(inspection?.items || []);
       if (match) {
         return {
           ...match,
           chatId,
-          source: 'seller_label',
+          source: match.reason === 'manual_label' ? 'manual_label' : 'seller_label',
           inspectionAvailable,
           chatFound,
           conclusive: true,
@@ -111,7 +112,7 @@ function installSellerAliasHandoff() {
 
     if (!conclusive && resolution.direct.endsWith('@lid')) {
       console.warn(
-        `[HANDOFF] leitura de vendedor inconclusiva; automação não liberará bloqueio existente `
+        `[HANDOFF] leitura de etiquetas inconclusiva; automação manterá qualquer bloqueio existente `
         + `| cliente=${clientId} | aliases=${resolution.candidates.join(',') || '-'}`,
       );
     }
@@ -131,20 +132,24 @@ function installSellerAliasHandoff() {
     const resolution = assignment?.identityResolution || await resolveSellerLabelCandidates(channel, clientId);
 
     if (assignment?.assigned) {
+      const reason = assignment.reason || 'seller_label';
+      const source = assignment.source || reason;
+
       HumanControl.setBlock(clientId, {
-        reason: 'seller_label',
-        source: 'seller_label',
+        reason,
+        source,
         seller: assignment.seller,
         labelName: assignment.labelName,
+        persistent: true,
         blockedHours: env.humanBlockHours,
       });
 
       return {
         blocked: true,
-        reason: 'seller_label',
+        reason,
         seller: assignment.seller,
         labelName: assignment.labelName,
-        source: assignment.source,
+        source,
         details: assignment,
       };
     }
@@ -156,7 +161,7 @@ function installSellerAliasHandoff() {
     if (inherited?.control) {
       HumanControl.setBlock(clientId, {
         ...inherited.control,
-        persistent: !inherited.control?.blockedUntil,
+        persistent: true,
       });
 
       return {
@@ -173,15 +178,14 @@ function installSellerAliasHandoff() {
       };
     }
 
-    // Uma etiqueta removida só libera o bot após inspeção conclusiva de todos os
-    // aliases necessários. Falha de resolução nunca é interpretada como remoção.
-    if (current?.blocked && reason === 'seller_label' && assignment?.conclusive) {
-      HumanControl.clearBlock(clientId);
-      console.log(`[HANDOFF] etiqueta de vendedor removida em todos os aliases; automação liberada | cliente=${clientId}`);
-      return { blocked: false, reason: null, source: 'seller_label_removed' };
-    }
-
     if (current?.blocked) {
+      if (assignment?.conclusive && ['seller_label', 'manual_label'].includes(reason)) {
+        console.log(
+          `[HANDOFF] etiqueta externa não está mais visível; bloqueio persistente mantido `
+          + `| cliente=${clientId} | motivo=${reason}`,
+        );
+      }
+
       return {
         blocked: true,
         reason: current.control?.reason || 'human_block',
