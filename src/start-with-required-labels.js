@@ -67,12 +67,12 @@ require('./core/bufferStagePolicyPreload');
 require('./core/vpsReadinessPreload');
 require('./core/sellerLabelEventsPreload');
 
-// Precisa ser o último preload funcional da Inbox: captura a versão final do fluxo,
-// do buffer e do canal para persistir recebimento, leases, retries e deduplicação.
+// Persistência da entrada e gate de conexão.
 require('./core/messageInboxPreload');
-// Camada externa: mensagens ficam persistidas, mas não entram no fluxo até READY.
 require('./core/connectionReadinessGatePreload');
-// Camada final da Etapa 4: cursor por conversa, recuperação ordenada e ciclo de leads.
+// Captura a versão final do fluxo e do canal para registrar cada saída do bot.
+require('./core/outboundLedgerPreload');
+// Cursor, recuperação ordenada, alertas e operação dos leads.
 require('./core/conversationRecoveryPreload');
 
 const TokenCache = require('./core/tokenCacheMaintenance');
@@ -89,5 +89,5 @@ startQrAdminServer();
 const storage = Persistence.storageInfo();
 if (storage.driver === 'sqlite') Persistence.getDatabase();
 console.log(`[BANCO] driver=${storage.driver} | criptografado=${storage.encrypted ? 'sim' : 'não'}`);
-console.log('[BUILD] personalize-vps-conversation-cursor-v4');
+console.log('[BUILD] personalize-vps-outbound-ledger-leads-v5');
 require('./bootstrap');
