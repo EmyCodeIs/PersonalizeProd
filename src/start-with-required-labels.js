@@ -2,6 +2,9 @@
 
 require('dotenv').config();
 require('./core/safeLoggingPreload');
+// Precisa carregar antes de qualquer módulo que importe wppconnectClient:
+// aplica timeout finito, observa o client real e corrige a semântica READY.
+require('./core/connectionSupervisorPreload');
 
 // No Windows, SESSION_ACCESS_AUTO_START decide se o portal local será iniciado.
 // Na VPS, `npm run vps:start` cria uma área de trabalho virtual, publica essa
@@ -64,9 +67,11 @@ require('./core/bufferStagePolicyPreload');
 require('./core/vpsReadinessPreload');
 require('./core/sellerLabelEventsPreload');
 
-// Precisa ser o último preload funcional: captura a versão final do fluxo,
+// Precisa ser o último preload funcional da Inbox: captura a versão final do fluxo,
 // do buffer e do canal para persistir recebimento, leases, retries e deduplicação.
 require('./core/messageInboxPreload');
+// Camada externa final: mensagens ficam persistidas, mas não entram no fluxo até READY.
+require('./core/connectionReadinessGatePreload');
 
 const TokenCache = require('./core/tokenCacheMaintenance');
 const BrowserCache = require('./core/browserCacheMaintenance');
@@ -82,5 +87,5 @@ startQrAdminServer();
 const storage = Persistence.storageInfo();
 if (storage.driver === 'sqlite') Persistence.getDatabase();
 console.log(`[BANCO] driver=${storage.driver} | criptografado=${storage.encrypted ? 'sim' : 'não'}`);
-console.log('[BUILD] personalize-vps-secure-sqlite-inbox-v2');
+console.log('[BUILD] personalize-vps-connection-supervisor-v3');
 require('./bootstrap');
