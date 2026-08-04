@@ -17,6 +17,7 @@ function installSellerLabelEvents() {
 
     const handler = createSellerLabelUpdateHandler({
       getChannel: () => channel,
+      clearBuffer: (clientId) => channel?.__clearConversationBuffer?.(clientId),
       delayMs: 500,
     });
     client.onUpdateLabel(async (data) => {
@@ -26,7 +27,7 @@ function installSellerLabelEvents() {
         console.warn('[ETIQUETAS][EVENTO] falha ao processar atualização:', error?.message || error);
       }
     });
-    console.log('[ETIQUETAS][EVENTO] monitor de vendedor registrado; funciona também após a conclusão do pré-atendimento');
+    console.log('[ETIQUETAS][EVENTO] monitor registrado com bloqueio persistente e limpeza do buffer real');
     return channel;
   };
 
