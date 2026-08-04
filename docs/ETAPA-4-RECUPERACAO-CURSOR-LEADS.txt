@@ -1,0 +1,147 @@
+ETAPA 4 — RECUPERAÇÃO UNIFICADA, CURSOR E LEADS 24H
+
+OBJETIVO
+
+Substituir a retomada baseada em uma única resposta pendente por uma recuperação ordenada e persistente por conversa, usando a Inbox da Etapa 2 e respeitando a conexão READY da Etapa 3.
+
+1. CURSOR PERSISTENTE POR CONVERSA
+
+Arquivo:
+src/services/conversationCursorStore.js
+
+Persistência:
+data/conversation-cursors.json
+
+O cursor registra:
+- chave canônica da conversa;
+- aliases @lid e @c.us;
+- última mensagem observada;
+- última mensagem processada;
+- horário da última mensagem do cliente;
+- checkpoint do /resetarsys;
+- última rodada de recuperação;
+- snapshot compacto da sessão;
+- ciclo operacional da conversa.
+
+Aliases conhecidos compartilham o mesmo cursor e não aparecem como clientes separados.
+
+2. AVANÇO SEGURO
+
+O cursor de processamento só avança quando a Inbox chega a um estado terminal:
+- PROCESSED;
+- IGNORED_HANDOFF;
+- IGNORED_POLICY;
+- FAILED_FINAL.
+
+Falhas temporárias, mensagens em buffer, fila ou lease não avançam o cursor.
+
+3. RECUPERAÇÃO COMPLETA E ORDENADA
+
+Arquivo:
+src/services/conversationRecovery.js
+
+A recuperação:
+- lê o histórico da conversa;
+- ordena por timestamp e messageId;
+- remove duplicatas;
+- seleciona todas as mensagens posteriores ao cursor;
+- ignora mensagens anteriores ao reset;
+- respeita idade máxima configurada;
+- persiste cada mensagem na Inbox;
+- reprocessa pelo mesmo onMessage, buffer, fila, handoff e fluxo comercial.
+
+A sinalização de conversa não lida identifica quais chats verificar, mas o histórico limitado é a fonte usada para localizar todas as mensagens posteriores ao cursor.
+
+4. FONTE ÚNICA
+
+Arquivo:
+src/core/conversationRecoveryPreload.js
+
+A camada:
+- integra Cursor e Inbox;
+- desativa a retomada legada que recuperava apenas uma mensagem;
+- faz bootstrap, reconexão e não lidas convergirem para a mesma Inbox;
+- só recupera quando a conexão está READY;
+- mantém bloqueio de handoff;
+- expõe ferramentas administrativas no channel.
+
+5. RESET
+
+O /resetarsys:
+- grava checkpoint persistente;
+- marca itens pendentes da Inbox como RESET;
+- zera o cursor da conversa autorizada;
+- impede retorno de mensagens anteriores ao reset;
+- não afeta outros clientes.
+
+6. CICLO DE LEADS
+
+Arquivo:
+src/services/leadAbandonmentReport.js
+
+Estados:
+- ACTIVE;
+- COMPLETED;
+- HANDOFF;
+- RESET;
+- ABANDONED_24H;
+- EXPIRED.
+
+Uma nova mensagem do cliente volta imediatamente o ciclo para ACTIVE.
+O monitor não renova artificialmente lifecycleAt quando o estado não mudou.
+
+7. RELATÓRIO TXT
+
+Comando:
+npm run leads:pending:report
+
+Saída:
+data/reports/leads-parados-<data>.txt
+
+O relatório contém:
+- nome conhecido;
+- telefone ou ID do contato;
+- serviço;
+- cidade;
+- etapa do fluxo;
+- primeiro contato;
+- última mensagem;
+- horas sem interação;
+- primeiras mensagens;
+- mensagens recentes do cliente;
+- indicação de sessão expirada;
+- controle para não avisar duas vezes sobre o mesmo último contato.
+
+LIMITAÇÃO TRANSPARENTE
+
+Nesta etapa, a Inbox persiste as mensagens recebidas. Por isso o TXT contém o lado do cliente. As respostas do bot serão incorporadas quando existir o ledger persistente de saída; não é correto afirmar que o histórico completo dos dois lados já está disponível.
+
+8. CONFIGURAÇÕES
+
+CONVERSATION_CURSOR_ENABLED=true
+CONVERSATION_RECOVERY_MAX_AGE_HOURS=24
+CONVERSATION_RECOVERY_HISTORY_LIMIT=120
+CONVERSATION_RECOVERY_MAX_CHATS=30
+CONVERSATION_RECOVERY_MAX_ROUNDS=20
+CONVERSATION_RECOVERY_BASELINE_GRACE_MS=1500
+CONVERSATION_CURSOR_TTL_DAYS=180
+LEAD_LIFECYCLE_REFRESH_MS=900000
+ABANDONED_LEAD_HOURS=24
+ABANDONED_LEAD_REPORT_MESSAGE_LIMIT=20
+
+9. FERRAMENTAS DO CHANNEL
+
+__runConversationCursorRecovery(reason)
+__conversationCursorStats()
+__leadAbandonmentReport(options)
+__writeLeadAbandonmentReport(options)
+__markLeadNotified(conversationKey, payload)
+
+10. FORA DO ESCOPO
+
+- envio automático do relatório ao vendedor;
+- integração visual final do painel de Leads;
+- ledger persistente de saídas;
+- histórico completo cliente + bot;
+- deploy na VPS;
+- merge na main.
