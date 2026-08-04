@@ -1,6 +1,6 @@
 'use strict';
 
-const CONNECTED_STATES = new Set(['CONNECTED', 'SYNCING', 'RESUMING']);
+const CONNECTED_STATES = new Set(['CONNECTED']);
 const DISCONNECTED_STATES = new Set([
   'CONFLICT',
   'UNPAIRED',
@@ -41,6 +41,8 @@ function createReconnectTracker(onReconnect) {
       return { normalized, disconnected: false, reconnected };
     }
 
+    // SYNCING e RESUMING são transições, não confirmação de que a sessão
+    // está pronta para recuperar e processar mensagens pendentes.
     return { normalized, disconnected, reconnected: false };
   };
 }
