@@ -26,7 +26,7 @@
     "test:inbox-sqlite": "node scripts/test-message-inbox-sqlite.js",
     "test:exclusive-labels": "node scripts/test-exclusive-service-labels.js",
     "test:service-label-once": "node scripts/test-service-label-once.js",
-    "test:seller-label-migration": "node scripts/test-seller-label-migration.js",
+    "test:seller-label-migration": "node scripts/migrate-seller-labels.js",
     "test:reset-handoff": "node scripts/test-reset-command-handoff.js",
     "test:reset-service": "node scripts/test-reset-service.js",
     "test:reset-entrypoint": "node scripts/test-reset-service-preload.js",
@@ -65,6 +65,10 @@
     "dotenv": "^17.2.3",
     "sharp": "^0.35.3",
     "ws": "^8.18.0"
+  },
+  "overrides": {
+    "brace-expansion": "1.1.18",
+    "ip-address": "10.4.0"
   },
   "engines": {
     "node": ">=22 <25"
