@@ -12,74 +12,98 @@ process.env.MOCK_MODE = 'true';
 
 async function main() {
   const Store = require('../src/services/leadStore');
-  const SellerHandoff = require('../src/core/sellerHandoff');
+  const HumanControl = require('../src/services/humanControlStore');
   const {
     createSellerLabelUpdateHandler,
     extractLabelUpdateChatId,
   } = require('../src/core/sellerLabelEvents');
 
-  const clientId = '5531999999922@c.us';
-  const session = Store.getSession(clientId);
-  session.completed = true;
-  session.etapa = 'concluido';
-  session.dados = { botDone: true, flow: 'letreiro' };
-  Store.saveSession(session);
+  const sellerClientId = '5531999999922@c.us';
+  const sellerSession = Store.getSession(sellerClientId);
+  sellerSession.completed = true;
+  sellerSession.etapa = 'concluido';
+  sellerSession.dados = { botDone: true, flow: 'letreiro' };
+  Store.saveSession(sellerSession);
 
   assert.equal(
-    extractLabelUpdateChatId({ chat: { id: { _serialized: clientId } } }),
-    clientId,
+    extractLabelUpdateChatId({ chat: { id: { _serialized: sellerClientId } } }),
+    sellerClientId,
   );
 
-  const originalGetAutomationBlock = SellerHandoff.getAutomationBlock;
   let clearCount = 0;
-  let mode = 'stale_after_add';
-  SellerHandoff.getAutomationBlock = async () => {
-    if (mode === 'stale_after_add') {
-      // Simula a janela real em que o evento chegou, mas o Store do WhatsApp
-      // ainda não refletiu a etiqueta. O payload do evento precisa bastar.
-      return { blocked: false, source: 'no_seller_label_yet' };
-    }
-    return { blocked: false, source: 'seller_label_removed' };
-  };
+  const handler = createSellerLabelUpdateHandler({
+    getChannel: () => ({ client: {}, __isInternalLabelOperation: () => false }),
+    clearBuffer: () => { clearCount += 1; },
+    delayMs: 0,
+  });
 
-  try {
-    const handler = createSellerLabelUpdateHandler({
-      getChannel: () => ({ __isInternalLabelOperation: () => false }),
-      clearBuffer: () => { clearCount += 1; },
-      delayMs: 0,
-    });
+  const assigned = await handler({
+    data: {
+      chat: { id: { _serialized: sellerClientId } },
+      labels: [{ name: 'Ana' }],
+      type: 'add',
+    },
+  });
 
-    const assigned = await handler({
-      data: {
-        chat: { id: { _serialized: clientId } },
-        labels: [{ name: 'Ana' }],
-        type: 'add',
-      },
-    });
+  assert.equal(assigned.assigned, true);
+  assert.equal(assigned.blocked, true);
+  assert.equal(clearCount, 1);
+  assert.equal(HumanControl.getBlock(sellerClientId).blocked, true);
+  assert.equal(HumanControl.getBlock(sellerClientId).control.reason, 'seller_label');
+  assert.equal(HumanControl.getBlock(sellerClientId).control.blockedUntil, null);
 
-    assert.equal(assigned.assigned, true);
-    assert.equal(clearCount, 1);
-    const assignedSession = Store.listSessions().find((item) => item.id === session.id);
-    assert.equal(assignedSession.completed, true, 'o evento de vendedor não pode reabrir atendimento concluído');
-    assert.equal(assignedSession.dados.sellerHandoff.status, 'assigned');
-    assert.equal(assignedSession.dados.sellerHandoff.seller, 'ana');
+  const assignedSession = Store.listSessions().find((item) => item.id === sellerSession.id);
+  assert.equal(assignedSession.completed, true, 'evento de vendedor não pode reabrir atendimento concluído');
+  assert.equal(assignedSession.dados.sellerHandoff.status, 'assigned');
+  assert.equal(assignedSession.dados.sellerHandoff.seller, 'ana');
 
-    mode = 'released';
-    const released = await handler({
-      data: {
-        chat: { id: { _serialized: clientId } },
-        labels: [{ name: 'Ana' }],
-        type: 'remove',
-      },
-    });
-    assert.equal(released.released, true);
-    const releasedSession = Store.listSessions().find((item) => item.id === session.id);
-    assert.equal(releasedSession.dados.sellerHandoff.status, 'released');
+  const removed = await handler({
+    data: {
+      chat: { id: { _serialized: sellerClientId } },
+      labels: [{ name: 'Ana' }],
+      type: 'remove',
+    },
+  });
 
-    console.log('✅ Evento de etiqueta identifica vendedor mesmo após o pré-atendimento concluído.');
-  } finally {
-    SellerHandoff.getAutomationBlock = originalGetAutomationBlock;
-  }
+  assert.equal(removed.removed, true);
+  assert.equal(removed.blocked, true);
+  assert.equal(removed.released, false);
+  assert.equal(HumanControl.getBlock(sellerClientId).blocked, true, 'remoção não pode liberar o bot');
+
+  const afterRemovalSession = Store.listSessions().find((item) => item.id === sellerSession.id);
+  assert.equal(afterRemovalSession.dados.sellerHandoff.status, 'assigned');
+  assert.equal(afterRemovalSession.dados.sellerHandoff.releasedAt, null);
+
+  const operationalClientId = '5531999999923@c.us';
+  Store.getSession(operationalClientId);
+  const operational = await handler({
+    data: {
+      chat: { id: { _serialized: operationalClientId } },
+      labels: [{ name: 'Orçamento letreiros' }],
+      type: 'add',
+    },
+  });
+
+  assert.equal(operational.blocked, false, 'etiqueta operacional não pode gerar handoff');
+  assert.equal(HumanControl.getBlock(operationalClientId).blocked, false);
+
+  const manualClientId = '5531999999924@c.us';
+  Store.getSession(manualClientId);
+  const manual = await handler({
+    data: {
+      chat: { id: { _serialized: manualClientId } },
+      labels: [{ name: 'Fornecedor' }],
+      type: 'add',
+    },
+  });
+
+  assert.equal(manual.assigned, true);
+  assert.equal(manual.blocked, true);
+  assert.equal(manual.guard.reason, 'manual_label');
+  assert.equal(HumanControl.getBlock(manualClientId).blocked, true);
+  assert.equal(HumanControl.getBlock(manualClientId).control.blockedUntil, null);
+
+  console.log('✅ Eventos de etiqueta protegidos: vendedor/manual bloqueiam, operacional não bloqueia e remoção não libera.');
 }
 
 main()
