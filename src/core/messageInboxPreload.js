@@ -21,6 +21,36 @@ function inboxIdsFromMessages(messages = []) {
     .filter(Boolean))];
 }
 
+function extractInteractiveId(raw = {}) {
+  const candidates = [
+    raw?.selectedRowId,
+    raw?.selectedButtonId,
+    raw?.listResponse?.singleSelectReply?.selectedRowId,
+    raw?.listResponseMessage?.singleSelectReply?.selectedRowId,
+    raw?.buttonsResponseMessage?.selectedButtonId,
+    raw?.templateButtonReplyMessage?.selectedId,
+    raw?.interactive?.list_reply?.id,
+    raw?.interactive?.button_reply?.id,
+    raw?.nativeFlowResponseMessage?.paramsJson,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (typeof candidate !== 'string') continue;
+    const value = candidate.trim();
+    if (!value) continue;
+    if (value.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(value);
+        const id = parsed?.id || parsed?.row_id || parsed?.selectedRowId;
+        if (id) return String(id).trim();
+      } catch (_) {}
+    }
+    return value;
+  }
+  return '';
+}
+
 function attachInboxMetadata(payload = {}, inboxId, originalMessageId = null) {
   const raw = payload?.raw && typeof payload.raw === 'object' ? payload.raw : {};
   return {
@@ -207,10 +237,12 @@ function installChannelTracking() {
         record = Inbox.readRecord(id);
         if (!record || Inbox.TERMINAL.has(record.status)) return undefined;
       } else {
+        const interactiveId = extractInteractiveId(payload.raw || {});
         const received = Inbox.receive({
           from: payload.from,
           conversationId: payload.from,
           text: payload.text,
+          interactiveId,
           raw: payload.raw,
           source: payload.source,
         });
@@ -230,9 +262,16 @@ function installChannelTracking() {
         const result = await originalOnMessage(enriched);
         const current = Inbox.readRecord(record.id);
         if (current?.status === Inbox.STATUS.RECEIVED) {
-          Inbox.markIgnored([record.id], Inbox.STATUS.IGNORED_POLICY, {
-            reason: 'handler_returned_without_buffer',
-          });
+          const block = HumanControl.getBlock(current.conversationId || payload.from);
+          Inbox.markIgnored(
+            [record.id],
+            block?.blocked ? Inbox.STATUS.IGNORED_HANDOFF : Inbox.STATUS.IGNORED_POLICY,
+            {
+              reason: block?.blocked
+                ? (block.control?.reason || 'human_block')
+                : 'handler_returned_without_buffer',
+            },
+          );
         }
         return result;
       } catch (error) {
@@ -268,6 +307,13 @@ function installChannelTracking() {
             source: `persistent-inbox-${reason}`,
           });
           if (!replayPayload) continue;
+          if (record.interactiveId) {
+            replayPayload.text = record.interactiveId;
+            replayPayload.raw = {
+              ...(replayPayload.raw || {}),
+              selectedRowId: record.interactiveId,
+            };
+          }
           replayed += 1;
           await onMessage(replayPayload);
         }
@@ -339,6 +385,7 @@ if (inboxConfig.enabled) {
 
 module.exports = {
   attachInboxMetadata,
+  extractInteractiveId,
   inboxIdFromRaw,
   inboxIdsFromMessages,
   installBufferTracking,
