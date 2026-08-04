@@ -3,6 +3,7 @@
 const path = require('path');
 const Identity = require('./contactIdentity');
 const Persistence = require('./persistence');
+const ResetCheckpoint = require('./resetCheckpointStore');
 const { env } = require('../config/env');
 
 const DATA_DIR = path.join(process.cwd(), 'data');
@@ -116,6 +117,17 @@ function getLastBotOutbound(clientId) {
     }
 
     if (!latest || recordTimestamp(record) > recordTimestamp(latest)) latest = record;
+  }
+
+  const reset = ResetCheckpoint.getLastReset(clientId);
+  if (reset && (!latest || recordTimestamp(reset) > recordTimestamp(latest))) {
+    latest = {
+      chatId: reset.chatId || normalizeChatId(clientId) || null,
+      at: reset.at,
+      messageId: reset.messageId || null,
+      type: 'reset',
+      resetGeneration: reset.generation,
+    };
   }
 
   if (changed) persist();
