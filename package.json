@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/start-with-required-labels.js",
     "dev": "node src/start-with-required-labels.js",
-    "test": "npm run check && npm run test:business-config && npm run test:flow && npm run test:lettering-sequence && npm run test:readiness && npm run test:unread-reconnect && npm run test:handoff && npm run test:seller-label-events && npm run test:connection-supervisor && npm run test:connection-preload && npm run test:connection-gate && npm run test:connection-health && npm run test:inbox-store && npm run test:inbox-runtime && npm run test:inbox-sqlite && npm run test:outbound-ledger-store && npm run test:outbound-ledger-runtime && npm run test:outbound-ledger-sqlite && npm run test:conversation-cursor && npm run test:conversation-recovery && npm run test:leads-24h && npm run test:lead-operations && npm run test:lead-alerts && npm run test:lead-panel && npm run test:exclusive-labels && npm run test:service-label-once && npm run test:seller-label-migration && npm run test:reset-handoff && npm run test:reset-service && npm run test:reset-entrypoint && npm run test:reset-history && npm run test:reset-labels && npm run test:commands && npm run test:catalog && npm run test:token-cache && npm run test:token-runtime && npm run test:browser-cache && npm run test:env && npm run storage:test && npm run test:vps-browser",
+    "test": "npm run check && npm run test:business-config && npm run test:flow && npm run test:lettering-sequence && npm run test:readiness && npm run test:unread-reconnect && npm run test:handoff && npm run test:seller-label-events && npm run test:connection-supervisor && npm run test:connection-preload && npm run test:connection-gate && npm run test:connection-health && npm run test:inbox-store && npm run test:inbox-runtime && npm run test:inbox-sqlite && npm run test:outbound-ledger-store && npm run test:outbound-ledger-runtime && npm run test:outbound-ledger-retry && npm run test:outbound-ledger-sqlite && npm run test:conversation-cursor && npm run test:conversation-recovery && npm run test:leads-24h && npm run test:lead-operations && npm run test:lead-alerts && npm run test:lead-panel && npm run test:exclusive-labels && npm run test:service-label-once && npm run test:seller-label-migration && npm run test:reset-handoff && npm run test:reset-service && npm run test:reset-entrypoint && npm run test:reset-history && npm run test:reset-labels && npm run test:commands && npm run test:catalog && npm run test:token-cache && npm run test:token-runtime && npm run test:browser-cache && npm run test:env && npm run storage:test && npm run test:vps-browser",
     "check": "node scripts/check-syntax.js",
     "test:flow": "node scripts/test-flow.js",
     "flow:simulate": "node scripts/simulate-flow.js",
@@ -26,6 +26,7 @@
     "test:inbox-sqlite": "node scripts/test-message-inbox-sqlite.js",
     "test:outbound-ledger-store": "node scripts/test-outbound-ledger-store.js",
     "test:outbound-ledger-runtime": "node scripts/test-outbound-ledger-runtime.js",
+    "test:outbound-ledger-retry": "node scripts/test-outbound-ledger-message-retry.js",
     "test:outbound-ledger-sqlite": "node scripts/test-outbound-ledger-sqlite.js",
     "test:conversation-cursor": "node scripts/test-conversation-cursor.js",
     "test:conversation-recovery": "node scripts/test-conversation-recovery.js",
