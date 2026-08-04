@@ -70,8 +70,10 @@ require('./core/sellerLabelEventsPreload');
 // Precisa ser o último preload funcional da Inbox: captura a versão final do fluxo,
 // do buffer e do canal para persistir recebimento, leases, retries e deduplicação.
 require('./core/messageInboxPreload');
-// Camada externa final: mensagens ficam persistidas, mas não entram no fluxo até READY.
+// Camada externa: mensagens ficam persistidas, mas não entram no fluxo até READY.
 require('./core/connectionReadinessGatePreload');
+// Camada final da Etapa 4: cursor por conversa, recuperação ordenada e ciclo de leads.
+require('./core/conversationRecoveryPreload');
 
 const TokenCache = require('./core/tokenCacheMaintenance');
 const BrowserCache = require('./core/browserCacheMaintenance');
@@ -87,5 +89,5 @@ startQrAdminServer();
 const storage = Persistence.storageInfo();
 if (storage.driver === 'sqlite') Persistence.getDatabase();
 console.log(`[BANCO] driver=${storage.driver} | criptografado=${storage.encrypted ? 'sim' : 'não'}`);
-console.log('[BUILD] personalize-vps-connection-supervisor-v3');
+console.log('[BUILD] personalize-vps-conversation-cursor-v4');
 require('./bootstrap');
