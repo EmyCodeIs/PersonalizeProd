@@ -9,9 +9,10 @@ process.env.SERVICE_LABEL_SUPPORT = 'Suporte';
 process.env.SELLER_LABEL_RULES = 'Adriano=#8FD0A8;Ana=#00A4F2;Emy=#7FE51F;C. Eduardo=#FEB100';
 
 const {
-  managedLabelNames,
-  selectManagedLabelIds,
-} = require('../src/core/safeResetCleanupOverridePreload');
+  LABEL_CATEGORY,
+  classifyLabel,
+  selectLabelIdsForReset,
+} = require('../src/core/labelPolicy');
 
 const labels = [
   { id: '1', name: 'Orçamento letreiros' },
@@ -25,13 +26,23 @@ const labels = [
   { id: '9', name: 'Voltar' },
 ];
 
-const names = managedLabelNames();
-const selected = selectManagedLabelIds(labels, names);
+assert.equal(classifyLabel(labels[0]).category, LABEL_CATEGORY.OPERATIONAL);
+assert.equal(classifyLabel(labels[3]).category, LABEL_CATEGORY.SELLER);
+assert.equal(classifyLabel(labels[5]).category, LABEL_CATEGORY.MANUAL);
+assert.equal(classifyLabel(labels[0]).blocks, false);
+assert.equal(classifyLabel(labels[3]).blocks, true);
+assert.equal(classifyLabel(labels[5]).blocks, true);
 
-assert.deepEqual(selected.sort(), ['1', '2', '3', '4', '5']);
-assert.equal(selected.includes('6'), false, 'Acompanhar deve ser preservada');
-assert.equal(selected.includes('7'), false, 'Fornecedor deve ser preservada');
-assert.equal(selected.includes('8'), false, 'Personalize deve ser preservada');
-assert.equal(selected.includes('9'), false, 'Voltar deve ser preservada');
+assert.deepEqual(
+  selectLabelIdsForReset(labels, { mode: 'TESTER_FULL' }).sort(),
+  labels.map((item) => item.id).sort(),
+  'o reset completo do tester precisa remover todas as etiquetas do contato',
+);
 
-console.log('✅ Reset/etiquetas verificado: remove somente etiquetas gerenciadas e preserva etiquetas manuais.');
+assert.deepEqual(
+  selectLabelIdsForReset(labels, { mode: 'OPERATIONAL_ONLY' }).sort(),
+  ['1', '2', '3'],
+  'a política central precisa continuar distinguindo as etiquetas operacionais',
+);
+
+console.log('✅ Política de etiquetas/reset verificada: operacional não bloqueia; externas bloqueiam; tester remove todas.');
