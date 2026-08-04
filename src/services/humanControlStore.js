@@ -7,6 +7,12 @@ const { env } = require('../config/env');
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const HUMAN_CONTROL_PATH = path.join(DATA_DIR, 'human-control.json');
+const PERSISTENT_REASONS = new Set([
+  'seller_label',
+  'manual_label',
+  'manual_outbound_message',
+  'manual_outbound_history',
+]);
 
 function readJson(filePath, fallback) {
   return Persistence.readJson(filePath, fallback);
@@ -51,15 +57,20 @@ function candidateBlockIds(clientId) {
   return [...new Set(values.map(normalizeClientId).filter(Boolean))];
 }
 
+function isPersistentReason(reason) {
+  return PERSISTENT_REASONS.has(String(reason || '').trim());
+}
+
 function normalizeBlock(control) {
   if (!control || typeof control !== 'object') return null;
+  const reason = cleanText(control.reason, 80) || 'human_block';
   const blockedAt = cleanText(control.blockedAt, 80) || nowIso();
-  const blockedUntil = cleanText(control.blockedUntil, 80);
+  const blockedUntil = isPersistentReason(reason) ? null : cleanText(control.blockedUntil, 80);
   const untilTimestamp = toFiniteTimestamp(blockedUntil);
   if (blockedUntil && untilTimestamp && untilTimestamp <= Date.now()) return null;
 
   return {
-    reason: cleanText(control.reason, 80) || 'human_block',
+    reason,
     source: cleanText(control.source, 80) || 'manual',
     seller: cleanText(control.seller, 80),
     labelName: cleanText(control.labelName, 120),
@@ -85,6 +96,7 @@ function purgeExpiredBlocks({ write = true } = {}) {
       changed = true;
       continue;
     }
+    if (JSON.stringify(state.blocks[clientId]) !== JSON.stringify(normalized)) changed = true;
     state.blocks[clientId] = normalized;
   }
   if (changed && write) persist();
@@ -93,15 +105,19 @@ function purgeExpiredBlocks({ write = true } = {}) {
 
 function getBlock(clientId) {
   for (const id of candidateBlockIds(clientId)) {
-    const normalized = normalizeBlock(state.blocks[id]);
+    const current = state.blocks[id];
+    const normalized = normalizeBlock(current);
     if (!normalized) {
-      if (state.blocks[id]) {
+      if (current) {
         delete state.blocks[id];
         persist();
       }
       continue;
     }
-    state.blocks[id] = normalized;
+    if (JSON.stringify(current) !== JSON.stringify(normalized)) {
+      state.blocks[id] = normalized;
+      persist();
+    }
     return { blocked: true, control: normalized, blockId: id };
   }
   return { blocked: false, control: null, blockId: null };
@@ -112,13 +128,7 @@ function setBlock(clientId, payload = {}) {
   if (!ids.length) return null;
 
   const blockedAt = payload.blockedAt || nowIso();
-  const persistentReasons = new Set([
-    'seller_label',
-    'manual_label',
-    'manual_outbound_message',
-    'manual_outbound_history',
-  ]);
-  const persistent = payload.persistent === true || persistentReasons.has(String(payload.reason || ''));
+  const persistent = payload.persistent === true || isPersistentReason(payload.reason);
   const blockedUntil = persistent
     ? null
     : (payload.blockedUntil || addHoursIso(blockedAt, payload.blockedHours || env.humanBlockHours));
@@ -166,6 +176,7 @@ module.exports = {
   _test: {
     addHoursIso,
     cleanText,
+    isPersistentReason,
     normalizeBlock,
   },
 };
