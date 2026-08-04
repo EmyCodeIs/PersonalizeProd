@@ -79,12 +79,14 @@ if command -v ufw >/dev/null 2>&1; then
   ufw allow 'Nginx Full' >/dev/null || true
   ufw deny 5901/tcp >/dev/null || true
   ufw deny 6080/tcp >/dev/null || true
+  ufw deny 3210/tcp >/dev/null || true
   echo "[nginx] regras do UFW adicionadas; o script não ativou o firewall automaticamente"
 fi
 
 echo
 echo "[nginx] acesso configurado"
-echo "[nginx] URL: https://$DOMAIN/vnc.html?autoconnect=true&resize=scale"
+echo "[nginx] WhatsApp remoto: https://$DOMAIN/vnc.html?autoconnect=true&resize=scale"
+echo "[nginx] painel de leads: https://$DOMAIN/leads"
 echo "[nginx] usuário HTTP: $ACCESS_USER"
 echo "[nginx] senha HTTP configurada sem interação; a senha VNC continua como segunda camada"
 echo
