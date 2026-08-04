@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/auditoria-dependencias
+  pull_request:
+    branches:
+      - agent/etapa-3-connection-supervisor
   workflow_dispatch:
 
 permissions:
