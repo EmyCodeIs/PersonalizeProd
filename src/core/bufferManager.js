@@ -1,5 +1,7 @@
 'use strict';
 
+const activeBuffers = new Set();
+
 function normalizeBufferId(clientId) {
   const raw = String(clientId || '').trim();
   if (!raw) return '';
@@ -11,6 +13,7 @@ class BufferManager {
     this.delayMs = Math.max(500, Number(delayMs || 4500));
     this.onFlush = onFlush;
     this.map = new Map();
+    activeBuffers.add(this);
   }
 
   push(clientId, message, options = {}) {
@@ -46,6 +49,22 @@ class BufferManager {
     if (item?.timer) clearTimeout(item.timer);
     this.map.delete(id);
   }
+
+  destroy() {
+    for (const item of this.map.values()) {
+      if (item?.timer) clearTimeout(item.timer);
+    }
+    this.map.clear();
+    activeBuffers.delete(this);
+  }
+
+  static clearAllFor(clientId) {
+    for (const buffer of activeBuffers) buffer.clear(clientId);
+  }
+
+  static activeCount() {
+    return activeBuffers.size;
+  }
 }
 
 function mergeMessages(messages = []) {
@@ -56,4 +75,9 @@ function mergeMessages(messages = []) {
     .join('\n');
 }
 
-module.exports = { BufferManager, mergeMessages, normalizeBufferId };
+module.exports = {
+  BufferManager,
+  mergeMessages,
+  normalizeBufferId,
+  _test: { activeBuffers },
+};

@@ -7,6 +7,12 @@ const { env } = require('../config/env');
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const HUMAN_CONTROL_PATH = path.join(DATA_DIR, 'human-control.json');
+const PERSISTENT_REASONS = new Set([
+  'seller_label',
+  'manual_label',
+  'manual_outbound_message',
+  'manual_outbound_history',
+]);
 
 function readJson(filePath, fallback) {
   return Persistence.readJson(filePath, fallback);
@@ -40,15 +46,31 @@ function normalizeClientId(clientId) {
   return Identity.getSessionKey(clientId);
 }
 
+function candidateBlockIds(clientId) {
+  const values = [clientId];
+  try { values.push(Identity.getSessionKey(clientId)); } catch (_) {}
+  try {
+    if (typeof Identity.getLabelCandidateIds === 'function') {
+      values.push(...Identity.getLabelCandidateIds(clientId));
+    }
+  } catch (_) {}
+  return [...new Set(values.map(normalizeClientId).filter(Boolean))];
+}
+
+function isPersistentReason(reason) {
+  return PERSISTENT_REASONS.has(String(reason || '').trim());
+}
+
 function normalizeBlock(control) {
   if (!control || typeof control !== 'object') return null;
+  const reason = cleanText(control.reason, 80) || 'human_block';
   const blockedAt = cleanText(control.blockedAt, 80) || nowIso();
-  const blockedUntil = cleanText(control.blockedUntil, 80);
+  const blockedUntil = isPersistentReason(reason) ? null : cleanText(control.blockedUntil, 80);
   const untilTimestamp = toFiniteTimestamp(blockedUntil);
   if (blockedUntil && untilTimestamp && untilTimestamp <= Date.now()) return null;
 
   return {
-    reason: cleanText(control.reason, 80) || 'human_block',
+    reason,
     source: cleanText(control.source, 80) || 'manual',
     seller: cleanText(control.seller, 80),
     labelName: cleanText(control.labelName, 120),
@@ -74,40 +96,44 @@ function purgeExpiredBlocks({ write = true } = {}) {
       changed = true;
       continue;
     }
-    if (state.blocks[clientId] !== normalized) {
-      state.blocks[clientId] = normalized;
-      changed = true;
-    }
+    if (JSON.stringify(state.blocks[clientId]) !== JSON.stringify(normalized)) changed = true;
+    state.blocks[clientId] = normalized;
   }
   if (changed && write) persist();
   return changed;
 }
 
 function getBlock(clientId) {
-  const id = normalizeClientId(clientId);
-  if (!id) return { blocked: false, control: null };
-  const normalized = normalizeBlock(state.blocks[id]);
-  if (!normalized) {
-    if (state.blocks[id]) {
-      delete state.blocks[id];
+  for (const id of candidateBlockIds(clientId)) {
+    const current = state.blocks[id];
+    const normalized = normalizeBlock(current);
+    if (!normalized) {
+      if (current) {
+        delete state.blocks[id];
+        persist();
+      }
+      continue;
+    }
+    if (JSON.stringify(current) !== JSON.stringify(normalized)) {
+      state.blocks[id] = normalized;
       persist();
     }
-    return { blocked: false, control: null };
+    return { blocked: true, control: normalized, blockId: id };
   }
-  state.blocks[id] = normalized;
-  return { blocked: true, control: normalized };
+  return { blocked: false, control: null, blockId: null };
 }
 
 function setBlock(clientId, payload = {}) {
-  const id = normalizeClientId(clientId);
-  if (!id) return null;
+  const ids = candidateBlockIds(clientId);
+  if (!ids.length) return null;
 
   const blockedAt = payload.blockedAt || nowIso();
-  const blockedUntil = payload.persistent
+  const persistent = payload.persistent === true || isPersistentReason(payload.reason);
+  const blockedUntil = persistent
     ? null
     : (payload.blockedUntil || addHoursIso(blockedAt, payload.blockedHours || env.humanBlockHours));
 
-  state.blocks[id] = normalizeBlock({
+  const normalized = normalizeBlock({
     reason: payload.reason || 'human_block',
     source: payload.source || 'manual',
     seller: payload.seller || null,
@@ -115,16 +141,21 @@ function setBlock(clientId, payload = {}) {
     blockedAt,
     blockedUntil,
   });
+
+  for (const id of ids) state.blocks[id] = normalized;
   persist();
-  return state.blocks[id];
+  return normalized;
 }
 
 function clearBlock(clientId) {
-  const id = normalizeClientId(clientId);
-  if (!id || !state.blocks[id]) return false;
-  delete state.blocks[id];
-  persist();
-  return true;
+  let changed = false;
+  for (const id of candidateBlockIds(clientId)) {
+    if (!state.blocks[id]) continue;
+    delete state.blocks[id];
+    changed = true;
+  }
+  if (changed) persist();
+  return changed;
 }
 
 function resetAll() {
@@ -136,6 +167,7 @@ purgeExpiredBlocks({ write: false });
 
 module.exports = {
   normalizeClientId,
+  candidateBlockIds,
   getBlock,
   setBlock,
   clearBlock,
@@ -144,6 +176,7 @@ module.exports = {
   _test: {
     addHoursIso,
     cleanText,
+    isPersistentReason,
     normalizeBlock,
   },
 };

@@ -4,6 +4,7 @@ const SellerHandoff = require('./sellerHandoff');
 const HumanControl = require('../services/humanControlStore');
 const Store = require('../services/leadStore');
 const Identity = require('../services/contactIdentity');
+const LabelPolicy = require('./labelPolicy');
 const { env } = require('../config/env');
 
 function wait(ms) {
@@ -40,45 +41,37 @@ function labelNamesFromUpdate(data = {}) {
 }
 
 function normalizeName(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
+  return LabelPolicy.normalizeName(value);
 }
 
 function operationalLabelNames() {
-  return new Set([
-    env.serviceLabelLetreiro,
-    env.serviceLabelPlotagem,
-    env.serviceLabelOutros,
-    env.supportLabelName,
-    ...(Array.isArray(env.serviceLabelReplaceGroup) ? env.serviceLabelReplaceGroup : []),
-  ].map(normalizeName).filter(Boolean));
+  return LabelPolicy.operationalLabelNames();
 }
 
 function sellerFromEventNames(names = []) {
-  const byNormalizedName = new Map(
-    Object.keys(env.sellerLabelRules || {}).map((name) => [normalizeName(name), name]),
-  );
-  for (const labelName of names) {
-    const seller = byNormalizedName.get(normalizeName(labelName));
-    if (seller) return { seller, labelName };
+  for (const name of names) {
+    const classification = LabelPolicy.classifyLabel(name);
+    if (classification.category === LabelPolicy.LABEL_CATEGORY.SELLER) {
+      return { seller: classification.seller, labelName: classification.name };
+    }
   }
   return null;
 }
 
 function firstManualLabelName(names = []) {
-  const operational = operationalLabelNames();
-  const sellers = new Set(Object.keys(env.sellerLabelRules || {}).map(normalizeName));
+  for (const name of names) {
+    const classification = LabelPolicy.classifyLabel(name);
+    if (classification.category === LabelPolicy.LABEL_CATEGORY.MANUAL) return classification.name;
+  }
+  return null;
+}
 
-  return names
-    .map((name) => String(name || '').trim())
-    .find((name) => {
-      const normalized = normalizeName(name);
-      return Boolean(normalized && !operational.has(normalized) && !sellers.has(normalized));
-    }) || null;
+function firstBlockingEventLabel(names = []) {
+  for (const name of names) {
+    const classification = LabelPolicy.classifyLabel(name);
+    if (classification.blocks) return classification;
+  }
+  return null;
 }
 
 function existingSessionFor(clientId) {
@@ -138,26 +131,26 @@ function createSellerLabelUpdateHandler(options = {}) {
       return { handled: false, reason: 'INTERNAL_OPERATION', chatId };
     }
 
-    const sellerFromEvent = type === 'add' ? sellerFromEventNames(names) : null;
-    if (sellerFromEvent) {
-      const key = `${chatId}:assigned:${sellerFromEvent.seller}`;
+    const eventLabel = type === 'add' ? firstBlockingEventLabel(names) : null;
+    if (eventLabel) {
+      const key = `${chatId}:${eventLabel.reason}:${eventLabel.normalized}`;
       const now = Date.now();
       const duplicate = Number(seen.get(key) || 0) > (now - 15000);
       seen.set(key, now);
 
       HumanControl.setBlock(chatId, {
-        reason: 'seller_label',
-        source: 'seller_label_event',
-        seller: sellerFromEvent.seller,
-        labelName: sellerFromEvent.labelName,
+        reason: eventLabel.reason,
+        source: `${eventLabel.reason}_event`,
+        seller: eventLabel.seller,
+        labelName: eventLabel.name,
         persistent: true,
         blockedHours: env.humanBlockHours,
       });
 
       persistSellerStatus(chatId, {
         status: 'assigned',
-        seller: sellerFromEvent.seller,
-        labelName: sellerFromEvent.labelName,
+        seller: eventLabel.seller,
+        labelName: eventLabel.name,
         assignedAt: new Date().toISOString(),
         releasedAt: null,
       });
@@ -167,9 +160,9 @@ function createSellerLabelUpdateHandler(options = {}) {
         const session = existingSessionFor(chatId);
         const phase = session?.completed || session?.dados?.botDone ? 'concluído' : 'em_andamento';
         console.log(
-          `[HANDOFF][VENDEDOR] cliente assumido pelo evento real | cliente=${chatId} `
-          + `| vendedor=${sellerFromEvent.seller} | etiqueta="${sellerFromEvent.labelName}" `
-          + `| préAtendimento=${phase} | evento=${type}`,
+          `[HANDOFF][ETIQUETA] cliente bloqueado pelo evento real | cliente=${chatId} `
+          + `| motivo=${eventLabel.reason} | vendedor=${eventLabel.seller || '-'} `
+          + `| etiqueta="${eventLabel.name}" | préAtendimento=${phase}`,
         );
       }
 
@@ -180,61 +173,17 @@ function createSellerLabelUpdateHandler(options = {}) {
         chatId,
         guard: {
           blocked: true,
-          reason: 'seller_label',
-          seller: sellerFromEvent.seller,
-          labelName: sellerFromEvent.labelName,
-          source: 'seller_label_event',
+          reason: eventLabel.reason,
+          seller: eventLabel.seller,
+          labelName: eventLabel.name,
+          source: `${eventLabel.reason}_event`,
         },
       };
     }
 
-    const manualLabelName = type === 'add' ? firstManualLabelName(names) : null;
-    if (manualLabelName) {
-      const key = `${chatId}:manual:${normalizeName(manualLabelName)}`;
-      const now = Date.now();
-      const duplicate = Number(seen.get(key) || 0) > (now - 15000);
-      seen.set(key, now);
-
-      HumanControl.setBlock(chatId, {
-        reason: 'manual_label',
-        source: 'manual_label_event',
-        seller: null,
-        labelName: manualLabelName,
-        persistent: true,
-        blockedHours: env.humanBlockHours,
-      });
-
-      persistSellerStatus(chatId, {
-        status: 'assigned',
-        seller: null,
-        labelName: manualLabelName,
-        assignedAt: new Date().toISOString(),
-        releasedAt: null,
-      });
-      clearBuffer(chatId);
-
-      if (!duplicate) {
-        const session = existingSessionFor(chatId);
-        const phase = session?.completed || session?.dados?.botDone ? 'concluído' : 'em_andamento';
-        console.log(
-          `[HANDOFF][MANUAL] cliente assumido por etiqueta manual | cliente=${chatId} `
-          + `| etiqueta="${manualLabelName}" | préAtendimento=${phase} | evento=${type}`,
-        );
-      }
-
-      return {
-        handled: true,
-        assigned: true,
-        blocked: true,
-        chatId,
-        guard: {
-          blocked: true,
-          reason: 'manual_label',
-          seller: null,
-          labelName: manualLabelName,
-          source: 'manual_label_event',
-        },
-      };
+    if (type === 'add' && names.length && names.every((name) => !LabelPolicy.classifyLabel(name).blocks)) {
+      console.log(`[ETIQUETAS][EVENTO] etiqueta operacional ignorada | cliente=${chatId} | etiquetas=${names.join(', ')}`);
+      return { handled: true, assigned: false, blocked: false, operational: true, chatId };
     }
 
     if (delayMs) await wait(delayMs);
@@ -242,11 +191,6 @@ function createSellerLabelUpdateHandler(options = {}) {
     const guard = await SellerHandoff.getAutomationBlock(channel, chatId);
     if (guard?.blocked) {
       const removed = type === 'remove';
-      const key = `${chatId}:blocked:${guard.reason || guard.seller || guard.labelName || '-'}`;
-      const now = Date.now();
-      const duplicate = Number(seen.get(key) || 0) > (now - 15000);
-      seen.set(key, now);
-
       persistSellerStatus(chatId, {
         status: 'assigned',
         seller: guard.seller || null,
@@ -256,18 +200,11 @@ function createSellerLabelUpdateHandler(options = {}) {
       });
       clearBuffer(chatId);
 
-      if (!duplicate) {
-        if (removed) {
-          console.log(
-            `[HANDOFF] etiqueta removida; bloqueio persistente mantido | cliente=${chatId} `
-            + `| motivo=${guard.reason || '-'} | etiqueta="${guard.labelName || names.join(', ') || '-'}"`,
-          );
-        } else {
-          console.log(
-            `[HANDOFF] bloqueio confirmado após evento de etiqueta | cliente=${chatId} `
-            + `| motivo=${guard.reason || '-'} | etiqueta="${guard.labelName || '-'}"`,
-          );
-        }
+      if (removed) {
+        console.log(
+          `[HANDOFF] etiqueta removida; bloqueio persistente mantido | cliente=${chatId} `
+          + `| motivo=${guard.reason || '-'} | etiqueta="${guard.labelName || names.join(', ') || '-'}"`,
+        );
       }
 
       return {
@@ -293,6 +230,7 @@ module.exports = {
   createSellerLabelUpdateHandler,
   existingSessionFor,
   extractLabelUpdateChatId,
+  firstBlockingEventLabel,
   firstManualLabelName,
   labelNamesFromUpdate,
   normalizeName,

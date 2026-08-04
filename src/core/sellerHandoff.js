@@ -3,6 +3,8 @@
 const Identity = require('../services/contactIdentity');
 const HumanControl = require('../services/humanControlStore');
 const { env } = require('../config/env');
+const LabelPolicy = require('./labelPolicy');
+const { resolvePhoneJid } = require('./lidServiceLabelFix');
 
 const COLOR_HEX = Object.freeze({
   green: '#00a884',
@@ -15,6 +17,8 @@ const COLOR_HEX = Object.freeze({
   purple: '#7f66ff',
   pink: '#ff7eb6',
 });
+
+let secondaryGuard = null;
 
 function hexToRgb(hex) {
   const clean = String(hex || '').replace('#', '').trim();
@@ -54,12 +58,7 @@ function nearestPaletteIndex(palette, requestedHex) {
 }
 
 function normalizeName(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
+  return LabelPolicy.normalizeName(value);
 }
 
 function desiredHex(color) {
@@ -69,22 +68,44 @@ function desiredHex(color) {
 }
 
 function managedServiceLabelNames() {
-  return [
-    env.serviceLabelLetreiro,
-    env.serviceLabelPlotagem,
-    env.serviceLabelOutros,
-    ...(Array.isArray(env.serviceLabelReplaceGroup) ? env.serviceLabelReplaceGroup : []),
-  ]
-    .map((item) => normalizeName(item))
-    .filter(Boolean);
+  return [...LabelPolicy.operationalLabelNames()];
+}
+
+function normalizeChatId(value) {
+  return Identity.normalizeChatId(value);
 }
 
 function orderedCandidateIds(clientId) {
-  const direct = Identity.normalizeChatId(clientId);
+  const direct = normalizeChatId(clientId);
   const known = typeof Identity.getLabelCandidateIds === 'function'
     ? Identity.getLabelCandidateIds(clientId)
     : [];
-  return [...new Set([direct, ...known].filter(Boolean))];
+  return [...new Set([direct, ...known.map(normalizeChatId)].filter(Boolean))];
+}
+
+async function resolveLabelCandidates(channel, clientId, options = {}) {
+  const resolver = options.resolvePhoneJid || resolvePhoneJid;
+  const direct = normalizeChatId(clientId);
+  const before = orderedCandidateIds(direct);
+  let phoneJid = before.find((item) => item.endsWith('@c.us')) || null;
+  let resolutionAttempted = false;
+
+  if (direct.endsWith('@lid') && !phoneJid) {
+    resolutionAttempted = true;
+    try { phoneJid = normalizeChatId(await resolver(channel, direct)); } catch (_) { phoneJid = null; }
+  }
+
+  const after = orderedCandidateIds(direct);
+  const candidates = [...new Set([direct, phoneJid, ...before, ...after].filter(Boolean))];
+  const hasPhoneCandidate = candidates.some((item) => item.endsWith('@c.us'));
+
+  return {
+    direct,
+    phoneJid: hasPhoneCandidate ? candidates.find((item) => item.endsWith('@c.us')) : null,
+    candidates,
+    resolutionAttempted,
+    conclusiveIdentity: !direct.endsWith('@lid') || hasPhoneCandidate,
+  };
 }
 
 async function inspectChatLabels(client, chatId) {
@@ -113,9 +134,7 @@ async function inspectChatLabels(client, chatId) {
 
       let palette = [];
       try {
-        if (WPP?.labels?.getLabelColorPalette) {
-          palette = await WPP.labels.getLabelColorPalette();
-        }
+        if (WPP?.labels?.getLabelColorPalette) palette = await WPP.labels.getLabelColorPalette();
       } catch (_) {}
 
       const labelStore = Store?.Label || Store?.Labels || null;
@@ -145,104 +164,115 @@ async function inspectChatLabels(client, chatId) {
 
       return { available: true, chatFound: true, items };
     }, { chatId });
-  } catch (err) {
-    console.warn(`[HANDOFF] não foi possível inspecionar etiquetas de ${chatId}:`, err?.message || err);
+  } catch (error) {
+    console.warn(`[HANDOFF] não foi possível inspecionar etiquetas de ${chatId}:`, error?.message || error);
     return { available: false, chatFound: null, items: [] };
   }
 }
 
 function findSellerLabelMatch(items = []) {
-  const managed = new Set(managedServiceLabelNames());
-  const rules = Object.entries(env.sellerLabelRules || {});
+  const match = LabelPolicy.firstBlockingLabel(items);
+  if (!match) return null;
+  const item = match.label || {};
+  const labelColorIndex = Number.isFinite(Number(item?.colorIndex)) ? Number(item.colorIndex) : null;
 
-  for (const item of items) {
-    const labelName = String(item?.name || '').trim();
-    const normalizedLabelName = normalizeName(labelName);
-    if (!labelName || managed.has(normalizedLabelName)) continue;
-
-    for (const [sellerKey, sellerColor] of rules) {
-      const normalizedSeller = normalizeName(sellerKey);
-      const labelHex = String(item?.hexColor || '').trim().toLowerCase();
-      const labelColorIndex = Number.isFinite(Number(item?.colorIndex)) ? Number(item.colorIndex) : null;
-      // Vendedor é reconhecido somente pelo nome exato. Cor serve para criação
-      // e conferência visual, nunca como identidade, pois etiquetas manuais podem
-      // compartilhar a mesma cor (por exemplo, Fornecedor e C. Eduardo).
-      const byExactName = Boolean(normalizedSeller && normalizedLabelName === normalizedSeller);
-
-      if (byExactName) {
-        return {
-          assigned: true,
-          reason: 'seller_label',
-          seller: sellerKey,
-          sellerColor,
-          labelName,
-          labelId: String(item?.id || ''),
-          labelHex: labelHex || null,
-          labelColorIndex,
-          matchMode: 'name',
-        };
-      }
-    }
-
-    return {
-      assigned: true,
-      reason: 'manual_label',
-      seller: null,
-      sellerColor: null,
-      labelName,
-      labelId: String(item?.id || ''),
-      labelHex: String(item?.hexColor || '').trim().toLowerCase() || null,
-      labelColorIndex: Number.isFinite(Number(item?.colorIndex)) ? Number(item.colorIndex) : null,
-      matchMode: 'manual_label',
-    };
-  }
-
-  return null;
+  return {
+    assigned: true,
+    reason: match.reason,
+    seller: match.seller,
+    sellerColor: match.seller ? env.sellerLabelRules?.[match.seller] || null : null,
+    labelName: match.name,
+    labelId: String(item?.id || ''),
+    labelHex: String(item?.hexColor || '').trim().toLowerCase() || null,
+    labelColorIndex,
+    matchMode: match.category === LabelPolicy.LABEL_CATEGORY.SELLER ? 'name' : 'manual_label',
+    category: match.category,
+  };
 }
 
 async function detectSellerLabelAssignment(channel, clientId) {
   if (!env.sellerLabelBlockingEnabled || !channel?.client) {
-    return { assigned: false, source: 'disabled' };
+    return {
+      assigned: false,
+      source: 'disabled',
+      inspectionAvailable: false,
+      chatFound: false,
+      conclusive: false,
+    };
   }
 
-  const candidates = orderedCandidateIds(clientId);
-  for (const chatId of candidates) {
+  const resolution = await resolveLabelCandidates(channel, clientId);
+  let inspectionAvailable = false;
+  let chatFound = false;
+  let inspectedPhoneAlias = false;
+
+  for (const chatId of resolution.candidates) {
     const inspection = await inspectChatLabels(channel.client, chatId);
-    const match = findSellerLabelMatch(inspection.items || []);
-    if (match) return { ...match, chatId, source: 'seller_label' };
+    if (inspection?.available) inspectionAvailable = true;
+    if (inspection?.chatFound) chatFound = true;
+    if (chatId.endsWith('@c.us') && inspection?.available && inspection?.chatFound) inspectedPhoneAlias = true;
+
+    const match = findSellerLabelMatch(inspection?.items || []);
+    if (match) {
+      return {
+        ...match,
+        chatId,
+        source: match.reason,
+        inspectionAvailable,
+        chatFound,
+        conclusive: true,
+        identityResolution: resolution,
+      };
+    }
   }
 
-  return { assigned: false, source: 'none' };
+  const conclusive = inspectionAvailable
+    && chatFound
+    && resolution.conclusiveIdentity
+    && (!resolution.direct.endsWith('@lid') || inspectedPhoneAlias);
+
+  if (!conclusive && resolution.direct.endsWith('@lid')) {
+    console.warn(
+      `[HANDOFF] leitura de etiquetas inconclusiva; bloqueio existente será preservado `
+      + `| cliente=${clientId} | aliases=${resolution.candidates.join(',') || '-'}`,
+    );
+  }
+
+  return {
+    assigned: false,
+    source: 'none',
+    inspectionAvailable,
+    chatFound,
+    conclusive,
+    identityResolution: resolution,
+  };
 }
 
-function registerManualTakeover(clientId, payload = {}) {
-  return HumanControl.setBlock(clientId, {
-    reason: payload.reason || 'manual_outbound_message',
-    source: payload.source || 'manual_outbound_message',
-    seller: payload.seller || null,
-    labelName: payload.labelName || null,
-    blockedHours: payload.blockedHours || env.humanBlockHours,
-  });
+function setSecondaryGuard(handler) {
+  secondaryGuard = typeof handler === 'function' ? handler : null;
+  return secondaryGuard;
 }
 
 async function getAutomationBlock(channel, clientId) {
-  const sellerAssignment = await detectSellerLabelAssignment(channel, clientId);
-  if (sellerAssignment.assigned) {
+  const assignment = await detectSellerLabelAssignment(channel, clientId);
+
+  if (assignment?.assigned) {
     HumanControl.setBlock(clientId, {
-      reason: sellerAssignment.reason || 'seller_label',
-      source: sellerAssignment.source || sellerAssignment.reason || 'seller_label',
-      seller: sellerAssignment.seller,
-      labelName: sellerAssignment.labelName,
+      reason: assignment.reason,
+      source: assignment.source,
+      seller: assignment.seller,
+      labelName: assignment.labelName,
+      persistent: true,
       blockedHours: env.humanBlockHours,
     });
 
     return {
       blocked: true,
-      reason: sellerAssignment.reason || 'seller_label',
-      seller: sellerAssignment.seller,
-      labelName: sellerAssignment.labelName,
-      source: sellerAssignment.source,
-      details: sellerAssignment,
+      reason: assignment.reason,
+      seller: assignment.seller,
+      labelName: assignment.labelName,
+      source: assignment.source,
+      details: assignment,
     };
   }
 
@@ -258,19 +288,39 @@ async function getAutomationBlock(channel, clientId) {
     };
   }
 
-  return { blocked: false, reason: null };
+  if (secondaryGuard) {
+    const result = await secondaryGuard(channel, clientId, assignment);
+    if (result?.blocked) return result;
+  }
+
+  return { blocked: false, reason: null, details: assignment };
+}
+
+function registerManualTakeover(clientId, payload = {}) {
+  return HumanControl.setBlock(clientId, {
+    reason: payload.reason || 'manual_outbound_message',
+    source: payload.source || 'manual_outbound_message',
+    seller: payload.seller || null,
+    labelName: payload.labelName || null,
+    persistent: true,
+    blockedHours: payload.blockedHours || env.humanBlockHours,
+  });
 }
 
 module.exports = {
   detectSellerLabelAssignment,
   getAutomationBlock,
   registerManualTakeover,
+  resolveLabelCandidates,
+  setSecondaryGuard,
   _test: {
     desiredHex,
     findSellerLabelMatch,
     inspectChatLabels,
     managedServiceLabelNames,
+    nearestPaletteIndex,
     normalizeName,
     orderedCandidateIds,
+    resolveLabelCandidates,
   },
 };

@@ -1,0 +1,184 @@
+ETAPA 1 — HANDOFF, ETIQUETAS E RESET CONSOLIDADOS
+PersonalizeProd
+Data: 04/08/2026
+
+OBJETIVO
+
+Concentrar as decisões de atendimento humano, classificação de etiquetas e reset do tester em serviços únicos, eliminando substituições concorrentes por preloads.
+
+1. POLÍTICA ÚNICA DE ETIQUETAS
+
+Arquivo responsável:
+src/core/labelPolicy.js
+
+Categorias:
+- OPERATIONAL
+- SELLER
+- MANUAL
+- UNKNOWN
+
+Regras:
+- Orçamento letreiros, Plotagens, Outros e Suporte são operacionais.
+- Etiqueta operacional não bloqueia o bot.
+- Nome exato de vendedor bloqueia como seller_label.
+- Qualquer outra etiqueta nomeada bloqueia como manual_label.
+- Cor não identifica vendedor.
+
+A mesma política é usada pelo handoff, eventos de etiqueta, testes e reset.
+
+2. HANDOFF ÚNICO
+
+Arquivo responsável:
+src/core/sellerHandoff.js
+
+O serviço:
+- inspeciona etiquetas em aliases @lid e @c.us;
+- resolve @lid quando necessário;
+- persiste seller_label e manual_label;
+- persiste mensagem manual;
+- consulta bloqueio entre aliases;
+- nunca libera automaticamente após remover etiqueta.
+
+Bloqueios persistentes:
+- seller_label
+- manual_label
+- manual_outbound_message
+- manual_outbound_history
+
+Bloqueios antigos desses tipos são migrados para persistentes durante a leitura.
+
+3. EVENTOS DE ETIQUETA
+
+Arquivo responsável:
+src/core/sellerLabelEvents.js
+
+Ao adicionar etiqueta externa:
+1. classifica pela política única;
+2. grava o bloqueio antes de qualquer outra ação;
+3. atualiza a sessão;
+4. limpa o buffer real da conversa;
+5. registra o evento.
+
+Ao adicionar etiqueta operacional:
+- ignora para handoff.
+
+Ao remover etiqueta:
+- mantém o bloqueio persistente;
+- não registra liberação;
+- limpa mensagens ainda aguardando no buffer.
+
+4. BUFFER
+
+BufferManager mantém registro das instâncias ativas.
+
+A função BufferManager.clearAllFor(clientId):
+- cancela timers da conversa;
+- remove mensagens ainda não enviadas à fila;
+- permite limpeza por handoff e reset.
+
+Mensagens já em execução continuam protegidas pelas consultas de handoff antes da fila e antes do processamento.
+
+5. RESET ÚNICO
+
+Arquivos responsáveis:
+- src/core/resetService.js
+- src/core/resetServicePreload.js
+- src/services/resetCheckpointStore.js
+
+O comando /resetarsys:
+- continua restrito aos administradores configurados;
+- é interceptado uma única vez;
+- não chega ao fluxo legado;
+- não usa o texto da confirmação como gatilho;
+- não usa caractere invisível;
+- não apaga todo o sistema.
+
+Ordem do reset:
+1. grava checkpoint persistente;
+2. limpa buffers da conversa e aliases;
+3. limpa caches de etiqueta;
+4. limpa o bloqueio humano;
+5. limpa o checkpoint anterior de saída do bot;
+6. reinicia somente a sessão do tester;
+7. apaga somente o perfil do tester;
+8. limpa nota do contato;
+9. remove todas as etiquetas do tester;
+10. confirma o resultado.
+
+Não são apagados:
+- sessões de outros clientes;
+- perfis de outros clientes;
+- leads de outros clientes;
+- identidades globais;
+- bloqueios de outros clientes.
+
+6. CHECKPOINT DE RESET
+
+Arquivo:
+src/services/resetCheckpointStore.js
+
+O checkpoint contém:
+- conversa e aliases;
+- data e hora;
+- ID da mensagem de reset;
+- comando;
+- ator;
+- modo;
+- geração.
+
+O BotActivityStore considera o reset como checkpoint operacional quando ele é mais recente que a última mensagem do bot.
+
+Consequência:
+- mensagens e saídas anteriores ao reset não recriam handoff;
+- a recuperação começa depois do reset;
+- o tester inicia como primeiro contato.
+
+7. CAMADAS REMOVIDAS
+
+Foram removidos:
+- src/core/resetCleanupPreload.js
+- src/core/safeResetCleanupOverridePreload.js
+- src/core/sellerAliasHandoffPreload.js
+
+Motivo:
+- duplicavam decisões;
+- dependiam da ordem de require;
+- podiam apagar ou substituir regras anteriores;
+- faziam reset depender da mensagem enviada ao usuário.
+
+8. TESTES OBRIGATÓRIOS
+
+A suíte protege:
+- classificação central de etiquetas;
+- handoff por vendedor;
+- handoff por etiqueta manual;
+- mensagem manual;
+- persistência após remoção da etiqueta;
+- aliases @lid e @c.us;
+- limpeza do buffer por evento;
+- reset isolado do tester;
+- preservação de outro cliente;
+- checkpoint de reset;
+- interceptação única de /resetarsys;
+- ausência de encaminhamento ao fluxo legado.
+
+Comandos específicos:
+- npm run test:handoff
+- npm run test:seller-label-events
+- npm run test:reset-handoff
+- npm run test:reset-service
+- npm run test:reset-entrypoint
+- npm run test:reset-labels
+
+Validação completa:
+npm test
+
+9. LIMITES DESTA ETAPA
+
+Ainda não implementados:
+- Inbox persistente por messageId;
+- cancelamento de tarefa que já começou a executar;
+- ConnectionSupervisor;
+- cursor completo de recuperação por conversa;
+- botão administrativo Liberar bot;
+- integração com PersonalizeNF.

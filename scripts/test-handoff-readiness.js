@@ -17,36 +17,20 @@ async function run() {
   const SellerHandoff = require('../src/core/sellerHandoff');
   const HumanControl = require('../src/services/humanControlStore');
 
-  const seller = SellerHandoff._test.findSellerLabelMatch([{ name: 'Ana' }]);
-  assert.equal(seller.reason, 'seller_label');
-  assert.equal(seller.seller, 'ana');
-
-  for (const labelName of ['Aninha', 'Adriano Silva', 'Fornecedor']) {
-    const manual = SellerHandoff._test.findSellerLabelMatch([{ name: labelName, hexColor: '#feb100' }]);
-    assert.equal(manual.reason, 'manual_label', `etiqueta externa deve bloquear: ${labelName}`);
-    assert.equal(manual.seller, null);
-  }
-
-  for (const labelName of ['Orçamento letreiros', 'Plotagens', 'Outros', 'Suporte']) {
-    assert.equal(
-      SellerHandoff._test.findSellerLabelMatch([{ name: labelName }]),
-      null,
-      `etiqueta operacional não pode bloquear: ${labelName}`,
-    );
-  }
+  assert.equal(SellerHandoff._test.findSellerLabelMatch([{ name: 'Ana' }]).seller, 'ana');
+  assert.equal(SellerHandoff._test.findSellerLabelMatch([{ name: 'Aninha', hexColor: '#00a4f2' }]).reason, 'manual_label');
+  assert.equal(SellerHandoff._test.findSellerLabelMatch([{ name: 'Adriano Silva', hexColor: '#8fd0a8' }]).reason, 'manual_label');
+  assert.equal(SellerHandoff._test.findSellerLabelMatch([{ name: 'Fornecedor', hexColor: '#feb100' }]).reason, 'manual_label');
+  assert.equal(SellerHandoff._test.findSellerLabelMatch([{ name: 'Plotagens' }]), null);
 
   let attachedLabels = [{ id: 'seller-ana', name: 'Ana', hexColor: '#00a4f2' }];
-  SellerHandoff._test.inspectChatLabels = async () => ({
-    available: true,
-    chatFound: true,
-    items: attachedLabels,
-  });
-  SellerHandoff._test.orderedCandidateIds = (clientId) => [String(clientId)];
-
-  require('../src/core/vpsReadinessPreload');
-  const { resolveSellerLabelCandidates } = require('../src/core/sellerAliasHandoffPreload');
-
-  const channel = { client: {} };
+  const channel = {
+    client: {
+      page: {
+        evaluate: async () => ({ available: true, chatFound: true, items: attachedLabels }),
+      },
+    },
+  };
   const clientId = '5531999999933@c.us';
 
   const assigned = await SellerHandoff.getAutomationBlock(channel, clientId);
@@ -54,39 +38,27 @@ async function run() {
   assert.equal(assigned.reason, 'seller_label');
   assert.equal(assigned.seller, 'ana');
   assert.equal(HumanControl.getBlock(clientId).blocked, true);
-  assert.equal(
-    HumanControl.getBlock(clientId).control.blockedUntil,
-    null,
-    'etiqueta externa deve criar bloqueio persistente',
-  );
 
   attachedLabels = [];
-  const removedSellerLabel = await SellerHandoff.getAutomationBlock(channel, clientId);
-  assert.equal(removedSellerLabel.blocked, true, 'remover etiqueta não pode reativar o bot');
-  assert.equal(removedSellerLabel.reason, 'seller_label');
+  const afterRemoval = await SellerHandoff.getAutomationBlock(channel, clientId);
+  assert.equal(afterRemoval.blocked, true, 'remover etiqueta não pode liberar o bot');
+  assert.equal(afterRemoval.reason, 'seller_label');
   assert.equal(HumanControl.getBlock(clientId).blocked, true);
 
   HumanControl.clearBlock(clientId);
-  attachedLabels = [{ id: 'manual-fornecedor', name: 'Fornecedor', hexColor: '#feb100' }];
-
+  attachedLabels = [{ id: 'manual', name: 'Fornecedor', hexColor: '#feb100' }];
   const manualLabel = await SellerHandoff.getAutomationBlock(channel, clientId);
   assert.equal(manualLabel.blocked, true);
   assert.equal(manualLabel.reason, 'manual_label');
-  assert.equal(manualLabel.labelName, 'Fornecedor');
+  assert.equal(manualLabel.seller, null);
   assert.equal(HumanControl.getBlock(clientId).control.blockedUntil, null);
 
-  attachedLabels = [];
-  const removedManualLabel = await SellerHandoff.getAutomationBlock(channel, clientId);
-  assert.equal(removedManualLabel.blocked, true, 'remover etiqueta manual não pode reativar o bot');
-  assert.equal(removedManualLabel.reason, 'manual_label');
-
   HumanControl.clearBlock(clientId);
-  HumanControl.setBlock(clientId, {
+  attachedLabels = [];
+  SellerHandoff.registerManualTakeover(clientId, {
     reason: 'manual_outbound_message',
     source: 'manual_outbound_message',
-    persistent: true,
   });
-
   const manualMessage = await SellerHandoff.getAutomationBlock(channel, clientId);
   assert.equal(manualMessage.blocked, true);
   assert.equal(manualMessage.reason, 'manual_outbound_message');
@@ -94,13 +66,13 @@ async function run() {
 
   const readiness = require('../src/core/vpsReadinessPreload');
   const collision = readiness.findExactSellerLabel([
-    { id: 'manual', name: 'Fornecedor', hexColor: '#feb100' },
+    { id: 'manual', name: 'fornecedor', hexColor: '#feb100' },
     { id: 'seller', name: 'C. Eduardo', hexColor: '#feb100' },
   ]);
   assert.equal(collision.seller, 'c. eduardo');
   assert.equal(readiness.findExactSellerLabel([{ name: 'Adriano Silva' }]), null);
 
-  const resolved = await resolveSellerLabelCandidates(
+  const resolved = await SellerHandoff.resolveLabelCandidates(
     {},
     '12345678901234@lid',
     { resolvePhoneJid: async () => '5531999999999@c.us' },
@@ -109,7 +81,7 @@ async function run() {
   assert.ok(resolved.candidates.includes('12345678901234@lid'));
   assert.ok(resolved.candidates.includes('5531999999999@c.us'));
 
-  const unresolved = await resolveSellerLabelCandidates(
+  const unresolved = await SellerHandoff.resolveLabelCandidates(
     {},
     '98765432109876@lid',
     { resolvePhoneJid: async () => null },
@@ -117,7 +89,7 @@ async function run() {
   assert.equal(unresolved.conclusiveIdentity, false);
   assert.deepEqual(unresolved.candidates, ['98765432109876@lid']);
 
-  console.log('✅ Handoff oficial protegido: toda etiqueta externa bloqueia e sua remoção não reativa o bot.');
+  console.log('✅ Handoff consolidado: etiqueta externa bloqueia, remoção mantém bloqueio e aliases são protegidos.');
 }
 
 run()

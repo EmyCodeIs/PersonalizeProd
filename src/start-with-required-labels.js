@@ -11,8 +11,6 @@ const INSTAGRAM_WELCOME_URL = 'https://www.instagram.com/personalizeseuambiente?
 const LEGACY_WELCOME_URL = 'https://personalizeseuambiente.com.br/bem-vindos';
 const configuredWelcomeUrl = String(process.env.BEM_VINDOS_LINK_URL || '').trim();
 
-// Migra automaticamente o valor antigo. Um link diferente definido futuramente
-// no .env continua sendo respeitado.
 if (!configuredWelcomeUrl || configuredWelcomeUrl === LEGACY_WELCOME_URL) {
   process.env.BEM_VINDOS_LINK_URL = INSTAGRAM_WELCOME_URL;
 }
@@ -39,50 +37,33 @@ serviceLabels.initializeServiceLabels = ensureRequiredLabelsOnce;
 installIdempotentServiceLabels();
 installLidServiceLabelFix();
 
-// Garante que Letreiros, Plotagens, Outros e Suporte sejam sempre tratados
-// como o mesmo grupo operacional, mesmo com um .env antigo incompleto.
 require('./core/operationalLabelPolicyPreload');
-
-// Mantém somente uma etiqueta operacional. Etiquetas manuais e a etiqueta
-// exata do vendedor são preservadas.
 require('./core/exclusiveServiceLabelsPreload');
-// Impede reaplicações da mesma etiqueta durante o fluxo, finalização e reinícios.
 require('./core/serviceLabelAssignmentPreload');
 
-// Instala o catálogo nativo. O catálogo aguarda estabilização; o texto seguinte
-// precisa ser confirmado pelo canal antes de a lista de acrílico ser liberada.
 require('./core/catalogMostruarioPreload');
+// Mantém apenas o monitor de mensagens manuais e operações internas de etiqueta.
+// A decisão de handoff fica concentrada em sellerHandoff + labelPolicy.
 require('./core/handoffPreload');
-// Precisa carregar antes da proteção administrativa: comandos digitados pelo
-// próprio WhatsApp Business voltam ao processador sem ativar handoff.
 require('./core/resetCommandHandoffPreload');
-// Mantém os comandos ativos somente para os números/IDs administrativos
-// configurados separadamente da whitelist geral de atendimento.
 require('./core/testCommandAccessPreload');
-require('./core/resetCleanupPreload');
-// Substitui a limpeza ampla antiga por uma limpeza que remove somente as
-// etiquetas gerenciadas, preservando as etiquetas manuais do contato.
-require('./core/safeResetCleanupOverridePreload');
+// /resetarsys é executado diretamente por um único serviço, depois da autorização
+// administrativa e antes de chegar ao fluxo legado.
+require('./core/resetServicePreload');
 require('./core/customerFlowFixPreload');
 require('./core/preferredSellerNotePreload');
 require('./core/completedFlowSilencePreload');
 require('./core/runtimeReliabilityPreload');
-// Reexecuta a recuperação segura quando o WhatsApp volta de uma desconexão.
 require('./core/unreadReconnectRecoveryPreload');
 require('./core/supportAndServicesPreload');
-// Aplica Suporte no momento da escolha, não apenas ao finalizar a coleta.
 require('./core/supportLabelSelectionPreload');
 require('./core/exactAcknowledgementPreload');
 require('./core/bufferStagePolicyPreload');
 
-// Primeiro instala as proteções gerais da VPS e, em seguida, amplia a leitura
-// exata do vendedor para os aliases @lid e @c.us do mesmo contato.
+// A prontidão da VPS não substitui mais as decisões de handoff.
 require('./core/vpsReadinessPreload');
-require('./core/sellerAliasHandoffPreload');
-// Escuta a inclusão/remoção de etiqueta de vendedor mesmo após o fluxo concluído.
 require('./core/sellerLabelEventsPreload');
 
-// As limpezas acontecem antes de o Chrome abrir. Durante a execução há apenas monitoramento.
 const TokenCache = require('./core/tokenCacheMaintenance');
 const BrowserCache = require('./core/browserCacheMaintenance');
 const Persistence = require('./services/persistence');
