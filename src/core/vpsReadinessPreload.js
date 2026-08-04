@@ -3,17 +3,12 @@
 const Store = require('../services/leadStore');
 const HumanControl = require('../services/humanControlStore');
 const WppClient = require('../services/wppconnectClient');
-const SellerHandoff = require('./sellerHandoff');
 const { OutboundTracker } = require('./outboundTracker');
+const LabelPolicy = require('./labelPolicy');
 const { env } = require('../config/env');
 
 function normalizeName(value) {
-  return String(value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
+  return LabelPolicy.normalizeName(value);
 }
 
 function extractTimestampMs(message = {}) {
@@ -37,143 +32,27 @@ function isUnreadWithinAge(item = {}, options = {}) {
   const now = Number.isFinite(Number(options.now)) ? Number(options.now) : Date.now();
   const maxAgeHours = Math.max(1, Number(options.maxAgeHours || env.unreadBootstrapMaxAgeHours || 24));
   const timestamp = extractTimestampMs(item.raw || item);
-
-  // Algumas versões do WhatsApp não retornam timestamp nesta consulta.
-  // Nesses casos, as outras proteções de histórico/handoff continuam valendo.
   if (!timestamp) return true;
-
   const ageMs = Math.max(0, now - timestamp);
   return ageMs <= (maxAgeHours * 60 * 60 * 1000);
 }
 
-function managedNonSellerNames() {
-  return new Set([
-    env.serviceLabelLetreiro,
-    env.serviceLabelPlotagem,
-    env.serviceLabelOutros,
-    env.supportLabelName,
-    ...(Array.isArray(env.serviceLabelReplaceGroup) ? env.serviceLabelReplaceGroup : []),
-  ].map(normalizeName).filter(Boolean));
-}
-
 function findExactSellerLabel(items = []) {
-  const ignored = managedNonSellerNames();
-  const rules = Object.entries(env.sellerLabelRules || {});
-
-  for (const item of items) {
-    const labelName = String(item?.name || '').trim();
-    const normalizedLabel = normalizeName(labelName);
-    if (!normalizedLabel || ignored.has(normalizedLabel)) continue;
-
-    for (const [seller, sellerColor] of rules) {
-      if (normalizedLabel !== normalizeName(seller)) continue;
-      return {
-        assigned: true,
-        seller,
-        sellerColor,
-        labelName,
-        labelId: String(item?.id || ''),
-        labelHex: String(item?.hexColor || '').trim().toLowerCase() || null,
-        labelColorIndex: Number.isFinite(Number(item?.colorIndex)) ? Number(item.colorIndex) : null,
-        matchMode: 'exact_name',
-      };
-    }
-  }
-
-  return null;
-}
-
-function installExactSellerHandoff() {
-  if (SellerHandoff.__vpsExactSellerHandoffInstalled) return;
-
-  const inspectChatLabels = SellerHandoff?._test?.inspectChatLabels;
-  const orderedCandidateIds = SellerHandoff?._test?.orderedCandidateIds;
-  if (typeof inspectChatLabels !== 'function' || typeof orderedCandidateIds !== 'function') return;
-
-  SellerHandoff.detectSellerLabelAssignment = async function detectExactSellerLabelAssignment(channel, clientId) {
-    if (!env.sellerLabelBlockingEnabled || !channel?.client) {
-      return { assigned: false, source: 'disabled', inspectionAvailable: false, chatFound: false };
-    }
-
-    let inspectionAvailable = false;
-    let chatFound = false;
-
-    for (const chatId of orderedCandidateIds(clientId)) {
-      const inspection = await inspectChatLabels(channel.client, chatId);
-      if (inspection?.available) inspectionAvailable = true;
-      if (inspection?.chatFound) chatFound = true;
-
-      const match = findExactSellerLabel(inspection?.items || []);
-      if (match) {
-        return {
-          ...match,
-          chatId,
-          source: 'seller_label',
-          inspectionAvailable,
-          chatFound,
-        };
-      }
-    }
-
+  for (const item of items || []) {
+    const classification = LabelPolicy.classifyLabel(item);
+    if (classification.category !== LabelPolicy.LABEL_CATEGORY.SELLER) continue;
     return {
-      assigned: false,
-      source: 'none',
-      inspectionAvailable,
-      chatFound,
+      assigned: true,
+      seller: classification.seller,
+      sellerColor: env.sellerLabelRules?.[classification.seller] || null,
+      labelName: classification.name,
+      labelId: String(item?.id || ''),
+      labelHex: String(item?.hexColor || '').trim().toLowerCase() || null,
+      labelColorIndex: Number.isFinite(Number(item?.colorIndex)) ? Number(item.colorIndex) : null,
+      matchMode: 'exact_name',
     };
-  };
-
-  SellerHandoff.getAutomationBlock = async function getAutomationBlockWithExactSeller(channel, clientId) {
-    const assignment = await SellerHandoff.detectSellerLabelAssignment(channel, clientId);
-
-    if (assignment?.assigned) {
-      HumanControl.setBlock(clientId, {
-        reason: 'seller_label',
-        source: 'seller_label',
-        seller: assignment.seller,
-        labelName: assignment.labelName,
-        blockedHours: env.humanBlockHours,
-      });
-
-      return {
-        blocked: true,
-        reason: 'seller_label',
-        seller: assignment.seller,
-        labelName: assignment.labelName,
-        source: assignment.source,
-        details: assignment,
-      };
-    }
-
-    const current = HumanControl.getBlock(clientId);
-    const reason = String(current?.control?.reason || '');
-
-    // Etiqueta é a fonte de verdade para o responsável. Quando a leitura foi
-    // conclusiva e a etiqueta não está mais no contato, libera o fluxo.
-    if (current?.blocked
-      && reason === 'seller_label'
-      && assignment?.inspectionAvailable
-      && assignment?.chatFound) {
-      HumanControl.clearBlock(clientId);
-      console.log(`[HANDOFF] etiqueta de vendedor removida; automação liberada | cliente=${clientId}`);
-      return { blocked: false, reason: null, source: 'seller_label_removed' };
-    }
-
-    if (current?.blocked) {
-      return {
-        blocked: true,
-        reason: current.control?.reason || 'human_block',
-        seller: current.control?.seller || null,
-        labelName: current.control?.labelName || null,
-        source: current.control?.source || 'human_control',
-        details: current.control,
-      };
-    }
-
-    return { blocked: false, reason: null };
-  };
-
-  SellerHandoff.__vpsExactSellerHandoffInstalled = true;
+  }
+  return null;
 }
 
 function installHumanBlockWriteDeduplication() {
@@ -187,7 +66,12 @@ function installHumanBlockWriteDeduplication() {
     const source = String(payload.source || 'manual');
     const seller = String(payload.seller || '');
     const labelName = String(payload.labelName || '');
-    const permanentReason = ['manual_outbound_message', 'manual_outbound_history', 'seller_label'].includes(reason);
+    const permanentReason = [
+      'manual_outbound_message',
+      'manual_outbound_history',
+      'manual_label',
+      'seller_label',
+    ].includes(reason);
 
     if (current?.blocked
       && permanentReason
@@ -272,7 +156,6 @@ function startPeriodicMaintenance() {
 }
 
 installHumanBlockWriteDeduplication();
-installExactSellerHandoff();
 installUnreadAgeGuard();
 installOutboundCacheLimit();
 startPeriodicMaintenance();
