@@ -18,6 +18,8 @@ const COLOR_HEX = Object.freeze({
   pink: '#ff7eb6',
 });
 
+let secondaryGuard = null;
+
 function hexToRgb(hex) {
   const clean = String(hex || '').replace('#', '').trim();
   if (!/^[0-9a-f]{6}$/i.test(clean)) return null;
@@ -246,6 +248,11 @@ async function detectSellerLabelAssignment(channel, clientId) {
   };
 }
 
+function setSecondaryGuard(handler) {
+  secondaryGuard = typeof handler === 'function' ? handler : null;
+  return secondaryGuard;
+}
+
 async function getAutomationBlock(channel, clientId) {
   const assignment = await detectSellerLabelAssignment(channel, clientId);
 
@@ -281,6 +288,11 @@ async function getAutomationBlock(channel, clientId) {
     };
   }
 
+  if (secondaryGuard) {
+    const result = await secondaryGuard(channel, clientId, assignment);
+    if (result?.blocked) return result;
+  }
+
   return { blocked: false, reason: null, details: assignment };
 }
 
@@ -300,6 +312,7 @@ module.exports = {
   getAutomationBlock,
   registerManualTakeover,
   resolveLabelCandidates,
+  setSecondaryGuard,
   _test: {
     desiredHex,
     findSellerLabelMatch,
