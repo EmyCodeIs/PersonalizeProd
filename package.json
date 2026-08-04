@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/start-with-required-labels.js",
     "dev": "node src/start-with-required-labels.js",
-    "test": "npm run check && npm run test:business-config && npm run test:flow && npm run test:lettering-sequence && npm run test:readiness && npm run test:unread-reconnect && npm run test:handoff && npm run test:seller-label-events && npm run test:exclusive-labels && npm run test:service-label-once && npm run test:seller-label-migration && npm run test:reset-handoff && npm run test:reset-service && npm run test:reset-labels && npm run test:commands && npm run test:catalog && npm run test:token-cache && npm run test:token-runtime && npm run test:browser-cache && npm run test:env && npm run storage:test && npm run test:vps-browser",
+    "test": "npm run check && npm run test:business-config && npm run test:flow && npm run test:lettering-sequence && npm run test:readiness && npm run test:unread-reconnect && npm run test:handoff && npm run test:seller-label-events && npm run test:exclusive-labels && npm run test:service-label-once && npm run test:seller-label-migration && npm run test:reset-handoff && npm run test:reset-service && npm run test:reset-entrypoint && npm run test:reset-labels && npm run test:commands && npm run test:catalog && npm run test:token-cache && npm run test:token-runtime && npm run test:browser-cache && npm run test:env && npm run storage:test && npm run test:vps-browser",
     "check": "node scripts/check-syntax.js",
     "test:flow": "node scripts/test-flow.js",
     "flow:simulate": "node scripts/simulate-flow.js",
@@ -22,6 +22,7 @@
     "test:seller-label-migration": "node scripts/test-seller-label-migration.js",
     "test:reset-handoff": "node scripts/test-reset-command-handoff.js",
     "test:reset-service": "node scripts/test-reset-service.js",
+    "test:reset-entrypoint": "node scripts/test-reset-service-preload.js",
     "test:reset-labels": "node scripts/test-reset-label-preservation.js",
     "test:commands": "node scripts/test-command-access.js",
     "test:catalog": "node scripts/test-catalog-mostruario.js",
