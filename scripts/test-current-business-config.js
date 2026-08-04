@@ -48,7 +48,7 @@ assert.equal(messages.askObservationWrite, 'Perfeito! Pode me contar o que gosta
 assert.equal(messages.askGeneralObservationText, 'Perfeito! Pode me contar o que gostaria de acrescentar?');
 assert.equal(
   messages.completedContactNote,
-  'Certo! Seu pedido foi registrado e encaminhado para nossa equipe. Em breve, um vendedor continuará o atendimento por aqui. 😊',
+  'Certo! Seu pedido foi registrado e encaminhado para nossa equipe. Em breve, um vendedor continuará o atendimento por aqui.',
 );
 
 const sellerEventSource = require('fs').readFileSync(require('path').join(__dirname, '../src/core/sellerLabelEventsPreload.js'), 'utf8');
