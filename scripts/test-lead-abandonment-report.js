@@ -10,11 +10,13 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'personalize-leads-24h-'))
 process.chdir(tempDir);
 process.env.STORAGE_DRIVER = 'file';
 process.env.ABANDONED_LEAD_HOURS = '24';
+process.env.OUTBOUND_LEDGER_ENABLED = 'true';
 
 try {
   const Identity = require('../src/services/contactIdentity');
   const Store = require('../src/services/leadStore');
   const Inbox = require('../src/services/messageInboxStore');
+  const Outbound = require('../src/services/outboundLedgerStore');
   const Cursor = require('../src/services/conversationCursorStore');
   const LeadReport = require('../src/services/leadAbandonmentReport');
 
@@ -27,6 +29,7 @@ try {
 
   const now = Date.now();
   const firstAt = now - (27 * 3600000);
+  const botAt = firstAt + 60000;
   const lastAt = now - (25 * 3600000);
   const first = Inbox.receive({
     from: clientId,
@@ -44,11 +47,21 @@ try {
   second.sourceTimestamp = lastAt;
   second.receivedAt = new Date(lastAt).toISOString();
   Inbox.writeRecord(second);
+
+  const outbound = Outbound.begin({
+    operationKey: 'lead-test-bot-answer',
+    conversationId: clientId,
+    type: 'text',
+    text: 'Olá, Maria! Vamos montar seu orçamento.',
+    now: botAt,
+  });
+  Outbound.markSent(outbound.record.id, { id: { _serialized: 'lead-bot-1' } }, { now: botAt });
   Cursor.markProcessed(clientId, second, { session: Store.getSession(clientId) });
 
   let report = LeadReport.buildReport({ now, thresholdHours: 24 });
   assert.equal(report.total, 1);
   assert.equal(report.pendingNotification, 1);
+  assert.equal(report.pendingAction, 1);
   assert.equal(report.leads[0].customerName, 'Maria Teste');
   assert.equal(report.leads[0].service, 'letreiro');
   assert.equal(report.leads[0].idleHours, 25);
@@ -56,12 +69,15 @@ try {
     'Olá, quero um letreiro',
     'Seria para minha loja',
   ]);
-  assert.equal(report.leads[0].transcriptCoverage, 'CLIENT_MESSAGES_ONLY_UNTIL_OUTBOUND_LEDGER');
+  assert.equal(report.leads[0].transcriptCoverage, 'CLIENT_AND_BOT_FROM_PERSISTENT_LEDGERS');
+  assert.deepEqual(report.leads[0].transcript.map((item) => item.actor), ['CLIENTE', 'BOT', 'CLIENTE']);
+  assert.equal(report.leads[0].operationStatus, 'PENDING');
 
   const txt = LeadReport.toTxt(report);
   assert.match(txt, /RELATÓRIO DE LEADS PARADOS/);
   assert.match(txt, /Maria Teste/);
   assert.match(txt, /CLIENTE: Olá, quero um letreiro/);
+  assert.match(txt, /BOT: Olá, Maria! Vamos montar seu orçamento\./);
 
   LeadReport.markNotified(report.leads[0].conversationKey, {
     lastCustomerMessageAt: report.leads[0].lastCustomerMessageAt,
@@ -73,9 +89,11 @@ try {
 
   const written = LeadReport.writeTxtReport({ now, thresholdHours: 24 });
   assert.ok(fs.existsSync(written.filePath));
-  assert.match(fs.readFileSync(written.filePath, 'utf8'), /Seria para minha loja/);
+  const writtenContent = fs.readFileSync(written.filePath, 'utf8');
+  assert.match(writtenContent, /Seria para minha loja/);
+  assert.match(writtenContent, /Vamos montar seu orçamento/);
 
-  console.log('✅ Leads 24h: detecção, primeiras mensagens, TXT e controle de aviso duplicado verificados.');
+  console.log('✅ Leads 24h: cliente + bot, TXT completo e controle de aviso duplicado verificados.');
 } finally {
   process.chdir(originalCwd);
   try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
