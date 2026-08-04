@@ -3,10 +3,17 @@ name: PersonalizeProd Dependency Audit
 on:
   push:
     branches:
-      - agent/auditoria-dependencias
+      - main
+      - 'agent/**'
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/dependency-audit.yml
   pull_request:
-    branches:
-      - agent/etapa-3-connection-supervisor
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/dependency-audit.yml
   workflow_dispatch:
 
 permissions:
@@ -15,7 +22,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,137 +33,52 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Instalar dependências sem scripts
+      - name: Instalar dependências
         run: npm ci --ignore-scripts
 
-      - name: Gerar auditoria detalhada
+      - name: Verificar versões protegidas
+        run: |
+          npm ls brace-expansion ip-address --all
+          node <<'NODE'
+          const assert = require('assert/strict');
+          const brace = require('brace-expansion/package.json').version;
+          const ipAddress = require('ip-address/package.json').version;
+          assert.equal(brace, '1.1.18');
+          assert.equal(ipAddress, '10.4.0');
+          console.log(`✅ Overrides confirmados: brace-expansion=${brace} | ip-address=${ipAddress}`);
+          NODE
+
+      - name: Bloquear novas vulnerabilidades
         shell: bash
         run: |
           npm audit --json > audit.json || true
           node <<'NODE'
           const fs = require('fs');
           const audit = JSON.parse(fs.readFileSync('audit.json', 'utf8'));
-          const output = {
-            metadata: audit.metadata,
-            vulnerabilities: Object.fromEntries(
-              Object.entries(audit.vulnerabilities || {}).map(([name, item]) => [name, {
-                name: item.name,
-                severity: item.severity,
-                isDirect: item.isDirect,
-                range: item.range,
-                via: (item.via || []).map((entry) => typeof entry === 'string' ? entry : {
-                  source: entry.source,
-                  name: entry.name,
-                  title: entry.title,
-                  severity: entry.severity,
-                  range: entry.range,
-                  url: entry.url,
-                }),
-                effects: item.effects,
-                nodes: item.nodes,
-                fixAvailable: item.fixAvailable,
-              }]),
-            ),
-          };
-          console.log('AUDIT_SUMMARY_BEGIN');
-          console.log(JSON.stringify(output, null, 2));
-          console.log('AUDIT_SUMMARY_END');
-          NODE
-
-      - name: Mapear árvore vulnerável
-        shell: bash
-        run: |
-          echo 'DEPENDENCY_TREE_BEGIN'
-          npm ls @wppconnect-team/wppconnect brace-expansion file-type got ip-address latest-version package-json sharp --all || true
-          echo 'DEPENDENCY_TREE_END'
-
-          echo 'NPM_VERSIONS_BEGIN'
-          node <<'NODE'
-          const { execFileSync } = require('child_process');
-          const packages = [
+          const counts = audit.metadata?.vulnerabilities || {};
+          const actual = Object.keys(audit.vulnerabilities || {}).sort();
+          const accepted = new Set([
             '@wppconnect-team/wppconnect',
-            'brace-expansion',
             'file-type',
             'got',
-            'ip-address',
             'latest-version',
             'package-json',
             'sharp',
-          ];
-          for (const name of packages) {
-            try {
-              const version = execFileSync('npm', ['view', name, 'version', '--json'], { encoding: 'utf8' }).trim();
-              console.log(`${name} latest=${version}`);
-            } catch (error) {
-              console.log(`${name} latest=ERRO`);
-            }
+          ]);
+          const unexpected = actual.filter((name) => !accepted.has(name));
+
+          console.log('Vulnerabilidades atuais:', JSON.stringify(counts));
+          console.log('Pacotes ainda pendentes do upstream:', actual.join(', ') || 'nenhum');
+
+          if ((counts.critical || 0) > 0) {
+            throw new Error('Foi encontrada vulnerabilidade crítica.');
           }
-          try {
-            const latest = execFileSync(
-              'npm',
-              ['view', '@wppconnect-team/wppconnect@latest', 'dependencies', '--json'],
-              { encoding: 'utf8' },
-            ).trim();
-            console.log('WPP_LATEST_DEPENDENCIES=' + latest);
-          } catch (error) {
-            console.log('WPP_LATEST_DEPENDENCIES=ERRO');
+          if ((counts.high || 0) > 2 || (counts.moderate || 0) > 4) {
+            throw new Error('A quantidade de vulnerabilidades aumentou acima da dívida conhecida.');
           }
-          NODE
-          echo 'NPM_VERSIONS_END'
+          if (unexpected.length) {
+            throw new Error(`Novas dependências vulneráveis: ${unexpected.join(', ')}`);
+          }
 
-      - name: Testar overrides conservadores
-        shell: bash
-        run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          pkg.overrides = {
-            ...(pkg.overrides || {}),
-            'brace-expansion': '1.1.18',
-            'ip-address': '10.4.0',
-            '@wppconnect-team/wppconnect': {
-              ...((pkg.overrides || {})['@wppconnect-team/wppconnect'] || {}),
-              sharp: '0.35.3',
-            },
-          };
-          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          NODE
-
-          npm install --package-lock-only --ignore-scripts
-          npm ci
-
-          echo 'OVERRIDE_TREE_BEGIN'
-          npm ls brace-expansion ip-address sharp @wppconnect-team/wppconnect --all || true
-          echo 'OVERRIDE_TREE_END'
-
-          npm audit --json > audit-after.json || true
-          node <<'NODE'
-          const fs = require('fs');
-          const audit = JSON.parse(fs.readFileSync('audit-after.json', 'utf8'));
-          console.log('AUDIT_AFTER_OVERRIDES_BEGIN');
-          console.log(JSON.stringify({
-            metadata: audit.metadata,
-            packages: Object.fromEntries(
-              Object.entries(audit.vulnerabilities || {}).map(([name, item]) => [name, {
-                severity: item.severity,
-                range: item.range,
-                fixAvailable: item.fixAvailable,
-              }]),
-            ),
-          }, null, 2));
-          console.log('AUDIT_AFTER_OVERRIDES_END');
-          NODE
-
-          npm test
-
-      - name: Simular correção automática restante
-        shell: bash
-        run: |
-          npm audit fix --package-lock-only --dry-run --json > audit-fix.json || true
-          node <<'NODE'
-          const fs = require('fs');
-          const raw = fs.readFileSync('audit-fix.json', 'utf8');
-          console.log('AUDIT_FIX_DRY_RUN_BEGIN');
-          console.log(raw);
-          console.log('AUDIT_FIX_DRY_RUN_END');
+          console.log('✅ Auditoria dentro do limite controlado: 0 críticas, até 2 altas e até 4 moderadas conhecidas.');
           NODE
