@@ -31,7 +31,7 @@ async function main() {
   const clientId = '5531999999911@c.us';
   const events = [];
   let sequence = 0;
-  const channel = WppClient.createMockChannel();
+  const channel = await WppClient.createMockChannel();
 
   channel.client.sendText = async (chatId, text) => {
     events.push({ type: 'text', chatId, text: String(text || '') });
