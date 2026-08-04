@@ -53,7 +53,11 @@ process.env.ENABLE_TYPING = 'false';
     records = Ledger.listAll();
     assert.equal(rawSends, 2, 'replay da mesma entrada não pode reenviar a resposta confirmada');
     assert.equal(records.length, 1);
-    assert.equal(records[0].deduplicatedCalls, 1);
+    assert.equal(
+      records[0].deduplicatedCalls,
+      2,
+      'o contador inclui a tentativa repetida após falha e o replay bloqueado após confirmação',
+    );
 
     console.log('✅ Retry de texto: uma operação, duas tentativas e nenhum reenvio após confirmação.');
   } finally {
