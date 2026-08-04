@@ -1,0 +1,422 @@
+ETAPA 5 — LEDGER DE SAÍDA, ALERTAS E PAINEL DE LEADS
+Data: 04/08/2026
+
+BASE
+agent/etapa-4-recuperacao-cursor-leads
+
+BRANCH
+agent/etapa-5-ledger-alertas-painel
+
+OBJETIVO
+
+Completar a operação dos leads parados há 24 horas:
+- persistir as respostas enviadas pelo bot;
+- unir cliente e bot em um TXT cronológico;
+- avisar o vendedor sem duplicidade;
+- disponibilizar uma tela operacional;
+- registrar visto, contatado e descartado;
+- manter auditoria das ações;
+- não modificar mensagens ou regras comerciais do fluxo.
+
+1. LEDGER PERSISTENTE DE SAÍDA
+
+Arquivos principais:
+- src/services/outboundLedgerStore.js
+- src/core/outboundLedgerContext.js
+- src/core/outboundLedgerPreload.js
+
+O ledger registra antes do envio:
+- operação lógica;
+- conversa;
+- tipo;
+- texto ou legenda;
+- nome do arquivo;
+- mensagens recebidas que originaram a resposta;
+- sequência da resposta;
+- horário;
+- tentativa.
+
+Depois do WhatsApp responder, registra:
+- confirmação;
+- messageId;
+- horário confirmado;
+- resultado seguro;
+- erro quando houver.
+
+Estados:
+- PENDING;
+- SENT;
+- FAILED_RETRYABLE;
+- FAILED_FINAL;
+- UNCERTAIN.
+
+2. PERSISTÊNCIA E CRIPTOGRAFIA
+
+Em produção com STORAGE_DRIVER=sqlite:
+- tabela secure_outbound_messages;
+- uma linha por saída lógica;
+- texto, legenda, arquivo, histórico e dados internos criptografados com AES-256-GCM;
+- colunas abertas possuem somente chaves, estado e horários operacionais.
+
+Em desenvolvimento com STORAGE_DRIVER=file:
+- data/outbound-ledger.json.
+
+3. IDEMPOTÊNCIA
+
+Respostas geradas a partir de uma mensagem da Inbox recebem uma chave determinística:
+- IDs das mensagens recebidas;
+- posição da saída dentro da resposta;
+- tipo;
+- hash do conteúdo.
+
+Se a mesma entrada for reprocessada:
+- uma saída já SENT não volta ao WhatsApp;
+- o fluxo recebe um resultado sintético de sucesso;
+- a execução pode continuar normalmente.
+
+Retries internos de texto compartilham a mesma operação lógica.
+Exemplo:
+- tentativa 1 falha;
+- tentativa 2 confirma;
+- permanece um único registro no ledger com attempts=2.
+
+4. ENVIO INCERTO
+
+Existe uma janela entre o WhatsApp aceitar uma mensagem e o processo salvar a confirmação.
+
+Se o processo cair nessa janela, um registro PENDING antigo vira UNCERTAIN.
+
+Regra:
+- não repetir automaticamente;
+- mostrar no diagnóstico e na API de problemas;
+- exigir revisão humana.
+
+Isso evita trocar o risco de uma mensagem perdida pelo risco pior de mensagens duplicadas para clientes.
+
+5. SAÍDAS COBERTAS
+
+O preload registra:
+- sendText;
+- sendImage;
+- sendDocument;
+- client.sendText;
+- client.sendImage;
+- client.sendFile;
+- client.sendListMessage;
+- TXT enviado no alerta de lead.
+
+O ledger não guarda mídia/base64. Guarda apenas:
+- tipo;
+- legenda;
+- nome do arquivo;
+- confirmação do envio.
+
+6. TRANSCRIPT COMPLETO
+
+O relatório da Etapa 4 foi ampliado.
+
+Agora combina:
+- mensagens do cliente persistidas pela Inbox;
+- respostas do bot com status SENT no ledger;
+- horários;
+- tipos;
+- messageIds quando disponíveis.
+
+A ordenação usa:
+- horário;
+- messageId como desempate.
+
+O TXT individual contém:
+- nome;
+- contato;
+- serviço;
+- cidade;
+- etapa;
+- situação do fluxo;
+- situação operacional;
+- primeiro contato;
+- última mensagem;
+- tempo parado;
+- conversa cronológica CLIENTE + BOT;
+- avisos de saída incerta ou falha definitiva.
+
+Observação:
+as respostas anteriores à ativação da Etapa 5 não existem retroativamente no ledger. O histórico completo passa a ser garantido para as novas conversas registradas depois da ativação.
+
+7. ALERTA AUTOMÁTICO
+
+Arquivo:
+src/services/leadNotificationService.js
+
+Todo lead elegível entra automaticamente no painel.
+
+Quando LEAD_ALERT_RECIPIENT_CHAT_IDS estiver vazio:
+- nenhum número é inventado;
+- nenhuma mensagem é enviada;
+- o lead recebe alertStatus=PANEL_PENDING;
+- continua disponível no painel.
+
+Quando destinatários forem configurados:
+- envia resumo pelo WhatsApp;
+- envia o TXT individual;
+- utiliza chaves idempotentes por lead, destinatário e tipo de envio;
+- marca o lead como notificado somente depois da entrega completa.
+
+Se houver vários destinatários e a execução parar no meio:
+- destinatários já confirmados não recebem de novo;
+- somente operações ainda não confirmadas são tentadas.
+
+8. CONFIGURAÇÃO DO ALERTA
+
+LEAD_ALERT_ENABLED=true
+LEAD_ALERT_RECIPIENT_CHAT_IDS=
+LEAD_ALERT_INTERVAL_MS=900000
+LEAD_ALERT_MAX_PER_RUN=20
+LEAD_ALERT_SEND_TXT=true
+
+Exemplo de múltiplos destinatários:
+LEAD_ALERT_RECIPIENT_CHAT_IDS=5531999999999@c.us,5531988888888@c.us
+
+O valor deve ser confirmado no WhatsApp real antes de ativar.
+
+9. OPERAÇÃO DO LEAD
+
+Arquivo:
+src/services/leadOperationStore.js
+
+Cada ciclo do lead é identificado por:
+- conversationKey;
+- lastCustomerMessageAt.
+
+Assim, uma nova mensagem do mesmo cliente cria um novo ciclo sem apagar o histórico anterior.
+
+Estados:
+- PENDING;
+- SEEN;
+- CONTACTED;
+- DISCARDED.
+
+Dados registrados:
+- responsável;
+- observação;
+- seenAt;
+- contactedAt;
+- discardedAt;
+- situação e tentativas do alerta;
+- caminho do TXT;
+- auditoria.
+
+10. AUDITORIA
+
+A auditoria registra:
+- criação do lead;
+- mudança de estado;
+- vendedor responsável;
+- observação;
+- origem da ação;
+- envio ou falha do alerta;
+- destinatários;
+- horário.
+
+O histórico é mantido junto ao registro operacional criptografado pelo mecanismo de persistência da produção.
+
+11. PAINEL OPERACIONAL
+
+Arquivos:
+- public/leads/index.html
+- public/leads/styles.css
+- public/leads/app.js
+- src/services/leadPanelApi.js
+
+URL local:
+http://127.0.0.1:3210/leads
+
+URL preparada na VPS:
+https://DOMINIO/leads
+
+A tela oferece:
+- total parado;
+- aguardando ação;
+- contatados;
+- descartados;
+- avisos pendentes;
+- busca por nome, contato, cidade, serviço ou etapa;
+- filtro por situação;
+- lista priorizada;
+- detalhe do cliente;
+- conversa cliente + bot;
+- download do TXT;
+- observação;
+- marcar como visto;
+- marcar como contatado;
+- descartar;
+- histórico de ações;
+- botão para executar avisos.
+
+12. SEGURANÇA DO PAINEL
+
+Camada externa:
+- HTTPS;
+- Basic Auth do Nginx já usado pelo acesso remoto.
+
+Camada interna:
+- QR_ADMIN_DETAIL_TOKEN;
+- header x-admin-token ou Authorization Bearer.
+
+O script prepare-vps-env.js gera automaticamente:
+- chave do banco;
+- senha de backup;
+- token administrativo.
+
+O token não é exibido no terminal.
+
+13. NGINX
+
+O template deploy/nginx-whatsapp.conf agora possui rotas específicas:
+- /leads/ → 127.0.0.1:3210;
+- /api/leads → 127.0.0.1:3210;
+- demais rotas continuam no noVNC 127.0.0.1:6080.
+
+A porta 3210 permanece bloqueada externamente pelo UFW e só é acessada através do Nginx.
+
+14. API
+
+GET /api/leads
+- lista e indicadores.
+
+GET /api/leads/transcript
+- entrega TXT individual.
+
+GET /api/leads/audit
+- histórico operacional.
+
+POST /api/leads/action
+- altera PENDING, SEEN, CONTACTED ou DISCARDED.
+
+POST /api/leads/notify
+- executa a rodada manual de alertas.
+
+GET /api/leads/outbound-issues
+- mostra saídas UNCERTAIN ou FAILED_FINAL.
+
+15. HEALTH
+
+GET /health/detail também passa a incluir:
+- estatísticas do ledger de saída;
+- estatísticas das operações dos leads;
+- total parado;
+- avisos pendentes;
+- ações pendentes;
+- contatados;
+- descartados.
+
+16. CONFIGURAÇÕES DO LEDGER
+
+OUTBOUND_LEDGER_ENABLED=true
+OUTBOUND_LEDGER_UNCERTAIN_AFTER_MS=300000
+OUTBOUND_LEDGER_TTL_DAYS=180
+OUTBOUND_LEDGER_FAILED_TTL_DAYS=365
+OUTBOUND_LEDGER_MAX_ENTRIES=50000
+OUTBOUND_LEDGER_MAX_ATTEMPTS=3
+LEAD_TRANSCRIPT_MAX_MESSAGES=2000
+LEAD_OPERATION_TTL_DAYS=365
+LEAD_PANEL_ENABLED=true
+LEAD_PANEL_PUBLIC_URL=
+QR_ADMIN_DETAIL_TOKEN=
+
+17. RETENÇÃO
+
+Padrões:
+- saídas confirmadas: 180 dias;
+- falhas finais e incertas: 365 dias;
+- operações de leads: 365 dias;
+- máximo do ledger: 50 mil registros;
+- máximo da conversa exibida: 2 mil mensagens.
+
+18. TESTES NOVOS
+
+scripts/test-outbound-ledger-store.js
+- persistência;
+- deduplicação;
+- retry;
+- estado incerto;
+- reinício.
+
+scripts/test-outbound-ledger-runtime.js
+- texto;
+- lista;
+- TXT;
+- contexto da Inbox;
+- replay sem reenvio.
+
+scripts/test-outbound-ledger-message-retry.js
+- duas tentativas como uma única resposta;
+- confirmação final;
+- replay sem duplicidade.
+
+scripts/test-outbound-ledger-sqlite.js
+- linha por saída;
+- payload criptografado;
+- texto ausente das colunas abertas;
+- leitura após reinício.
+
+scripts/test-lead-abandonment-report.js
+- cliente + bot;
+- ordem cronológica;
+- TXT completo;
+- aviso duplicado bloqueado.
+
+scripts/test-lead-operation-store.js
+- estados;
+- responsável;
+- observação;
+- alerta;
+- auditoria;
+- persistência.
+
+scripts/test-lead-notification-service.js
+- painel sem destinatário;
+- resumo;
+- TXT;
+- confirmação;
+- segunda rodada sem reenvio.
+
+scripts/test-lead-panel-api.js
+- frontend;
+- proxy HTTPS;
+- proteção da API;
+- listagem;
+- ação;
+- auditoria.
+
+19. LIMITAÇÕES
+
+EXATAMENTE UMA VEZ
+Não existe garantia matemática de exactly-once entre dois sistemas sem uma transação distribuída com o WhatsApp.
+
+A solução oferece:
+- idempotência persistente das operações conhecidas;
+- não repetição de saídas confirmadas;
+- retries controlados;
+- envio incerto bloqueado para revisão.
+
+HISTÓRICO ANTERIOR
+O ledger não recria respostas enviadas antes da ativação.
+
+DESTINATÁRIO
+O chatId do vendedor precisa ser confirmado antes de preencher LEAD_ALERT_RECIPIENT_CHAT_IDS.
+
+PAINEL MODULAR ANTIGO
+A linha das Etapas 0–4 não continha o frontend modular das branches antigas. Para não misturar o módulo fiscal nem trazer código paralelo, esta etapa criou uma tela operacional isolada no servidor administrativo atual. A API pode ser integrada ao painel modular maior depois.
+
+DEPLOY
+Nenhuma alteração foi aplicada à VPS, Nginx ativo, main ou produção.
+
+20. FORA DO ESCOPO
+
+- merge das branches empilhadas;
+- deploy;
+- escolha do destinatário real;
+- migração para o frontend modular fiscal;
+- reenvio automático de saída UNCERTAIN;
+- edição de mensagens comerciais.
