@@ -39,8 +39,10 @@ async function run() {
 
   let processCount = 0;
   let failNext = false;
+  const processedTexts = [];
   CustomerFlow.processCustomerMessage = async ({ clientId, text }) => {
     processCount += 1;
+    processedTexts.push(text);
     if (failNext) {
       failNext = false;
       const error = new Error(`falha simulada em ${clientId}: ${text}`);
@@ -179,8 +181,38 @@ async function run() {
   assert.equal(Inbox.readRecord(crashed.id).status, Inbox.STATUS.PROCESSED);
   assert.equal(processCount, 4, 'lease vencido precisa retomar exatamente uma vez');
 
+  failNext = true;
+  await channel.emitMessage({
+    from: client,
+    text: 'Acrílico colorido',
+    source: 'event',
+    raw: {
+      id: { _serialized: 'runtime-interactive-1' },
+      from: client,
+      type: 'list_response',
+      listResponse: {
+        singleSelectReply: { selectedRowId: 'acr_colorido' },
+      },
+    },
+  });
+  await sleep(250);
+
+  const interactive = Inbox.readRecord('msg:runtime-interactive-1');
+  assert.equal(interactive.status, Inbox.STATUS.FAILED_RETRYABLE);
+  assert.equal(interactive.interactiveId, 'acr_colorido');
+  Inbox.transition([interactive.id], Inbox.STATUS.FAILED_RETRYABLE, {
+    reason: 'liberar_retry_interativo',
+    patch: { availableAt: new Date(0).toISOString() },
+  });
+
+  await channel.__runPersistentInboxRecovery('interactive-retry-test');
+  await sleep(250);
+  assert.equal(Inbox.readRecord(interactive.id).status, Inbox.STATUS.PROCESSED);
+  assert.equal(processedTexts.at(-1), 'acr_colorido', 'replay precisa usar o ID da ação interativa');
+  assert.equal(processCount, 6);
+
   buffer.destroy();
-  console.log('✅ Runtime da Inbox: processamento, deduplicação, retry, handoff e retomada de lease verificados.');
+  console.log('✅ Runtime da Inbox: deduplicação, retry, handoff, lease e ações interativas verificados.');
 }
 
 run()
