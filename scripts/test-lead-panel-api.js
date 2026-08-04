@@ -6,6 +6,7 @@ const os = require('os');
 const path = require('path');
 const { EventEmitter } = require('events');
 
+const repoRoot = path.resolve(__dirname, '..');
 const originalCwd = process.cwd();
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'personalize-lead-panel-'));
 process.chdir(tempDir);
@@ -47,6 +48,19 @@ async function invoke(handler, { method = 'GET', pathname = '/', authorized = tr
 
 (async () => {
   try {
+    const actualHtml = fs.readFileSync(path.join(repoRoot, 'public', 'leads', 'index.html'), 'utf8');
+    const actualApp = fs.readFileSync(path.join(repoRoot, 'public', 'leads', 'app.js'), 'utf8');
+    const actualCss = fs.readFileSync(path.join(repoRoot, 'public', 'leads', 'styles.css'), 'utf8');
+    const nginx = fs.readFileSync(path.join(repoRoot, 'deploy', 'nginx-whatsapp.conf'), 'utf8');
+    assert.match(actualHtml, /id="leadList"/);
+    assert.match(actualHtml, /data-action="CONTACTED"/);
+    assert.match(actualApp, /\/api\/leads\/action/);
+    assert.match(actualApp, /textContent/);
+    assert.match(actualCss, /\.transcript/);
+    assert.match(nginx, /location \/leads\//);
+    assert.match(nginx, /location \/api\/leads/);
+    assert.match(nginx, /proxy_pass http:\/\/127\.0\.0\.1:3210/);
+
     const publicDir = path.join(tempDir, 'public', 'leads');
     fs.mkdirSync(publicDir, { recursive: true });
     fs.writeFileSync(path.join(publicDir, 'index.html'), '<!doctype html><title>Leads parados</title>', 'utf8');
@@ -113,7 +127,7 @@ async function invoke(handler, { method = 'GET', pathname = '/', authorized = tr
     assert.equal(result.response.statusCode, 200);
     assert.equal(result.json().total, 0);
 
-    console.log('✅ Painel de leads: arquivos estáticos, autenticação, listagem, ação e auditoria verificados.');
+    console.log('✅ Painel de leads: frontend, HTTPS, autenticação, listagem, ação e auditoria verificados.');
   } finally {
     process.chdir(originalCwd);
     try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch (_) {}
