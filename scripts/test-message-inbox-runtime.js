@@ -142,6 +142,10 @@ async function run() {
     raw: { id: { _serialized: 'runtime-blocked-1' }, from: blockedClient, type: 'chat' },
   }).record;
   Inbox.markBuffered([blockedRecord.id], { conversationId: blockedClient });
+  Inbox.writeRecord({
+    ...Inbox.readRecord(blockedRecord.id),
+    updatedAt: new Date(0).toISOString(),
+  });
   HumanControl.setBlock(blockedClient, {
     reason: 'manual_outbound_message',
     source: 'test',
