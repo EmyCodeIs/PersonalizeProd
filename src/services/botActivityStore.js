@@ -103,6 +103,7 @@ function markBotOutbound(clientId, payload = {}) {
 
 function getLastBotOutbound(clientId) {
   let changed = false;
+  let latest = null;
 
   for (const key of candidateKeys(clientId)) {
     const record = state.contacts[key];
@@ -114,12 +115,22 @@ function getLastBotOutbound(clientId) {
       continue;
     }
 
-    if (changed) persist();
-    return { ...record };
+    if (!latest || recordTimestamp(record) > recordTimestamp(latest)) latest = record;
   }
 
   if (changed) persist();
-  return null;
+  return latest ? { ...latest } : null;
+}
+
+function clearContact(clientId) {
+  let changed = false;
+  for (const key of candidateKeys(clientId)) {
+    if (!state.contacts[key]) continue;
+    delete state.contacts[key];
+    changed = true;
+  }
+  if (changed) persist();
+  return changed;
 }
 
 function resetAll() {
@@ -141,6 +152,7 @@ if (!global.__personalizeBotActivityMaintenanceTimer) {
 }
 
 module.exports = {
+  clearContact,
   markBotOutbound,
   getLastBotOutbound,
   purgeExpired,
