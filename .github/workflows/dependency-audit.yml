@@ -1,0 +1,73 @@
+name: PersonalizeProd Dependency Audit
+
+on:
+  push:
+    branches:
+      - agent/auditoria-dependencias
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependências sem scripts
+        run: npm ci --ignore-scripts
+
+      - name: Gerar auditoria detalhada
+        shell: bash
+        run: |
+          npm audit --json > audit.json || true
+          node <<'NODE'
+          const fs = require('fs');
+          const audit = JSON.parse(fs.readFileSync('audit.json', 'utf8'));
+          const output = {
+            metadata: audit.metadata,
+            vulnerabilities: Object.fromEntries(
+              Object.entries(audit.vulnerabilities || {}).map(([name, item]) => [name, {
+                name: item.name,
+                severity: item.severity,
+                isDirect: item.isDirect,
+                range: item.range,
+                via: (item.via || []).map((entry) => typeof entry === 'string' ? entry : {
+                  source: entry.source,
+                  name: entry.name,
+                  title: entry.title,
+                  severity: entry.severity,
+                  range: entry.range,
+                  url: entry.url,
+                }),
+                effects: item.effects,
+                nodes: item.nodes,
+                fixAvailable: item.fixAvailable,
+              }]),
+            ),
+          };
+          console.log('AUDIT_SUMMARY_BEGIN');
+          console.log(JSON.stringify(output, null, 2));
+          console.log('AUDIT_SUMMARY_END');
+          NODE
+
+      - name: Simular correção automática
+        shell: bash
+        run: |
+          npm audit fix --package-lock-only --dry-run --json > audit-fix.json || true
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = fs.readFileSync('audit-fix.json', 'utf8');
+          console.log('AUDIT_FIX_DRY_RUN_BEGIN');
+          console.log(raw);
+          console.log('AUDIT_FIX_DRY_RUN_END');
+          NODE
