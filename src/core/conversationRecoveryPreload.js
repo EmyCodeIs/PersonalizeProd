@@ -5,12 +5,16 @@ const Inbox = require('../services/messageInboxStore');
 const Cursor = require('../services/conversationCursorStore');
 const Recovery = require('../services/conversationRecovery');
 const LeadReport = require('../services/leadAbandonmentReport');
+const LeadNotifications = require('../services/leadNotificationService');
+const LeadOperations = require('../services/leadOperationStore');
 const ResetCheckpoint = require('../services/resetCheckpointStore');
 const Store = require('../services/leadStore');
 const { getAutomationBlock } = require('./sellerHandoff');
 const { recoveryConfig } = require('../config/recoveryConfig');
+const { leadOperationsConfig } = require('../config/leadOperationsConfig');
 
 let activeChannel = null;
+let alertRunning = false;
 const originalListSessions = Store.listSessions.bind(Store);
 
 function sessionMap() {
@@ -113,6 +117,23 @@ function patchLegacySingleMessageRecovery() {
   Store.__cursorLegacyRecoveryBridgeInstalled = true;
 }
 
+async function runAlertCycle(reason = 'scheduled') {
+  if (alertRunning || !activeChannel) return { skipped: true, reason: alertRunning ? 'RUNNING' : 'CHANNEL_UNAVAILABLE' };
+  alertRunning = true;
+  try {
+    const result = await LeadNotifications.runLeadAlerts(activeChannel);
+    if (result.eligible || result.sent || result.failed) {
+      console.log(
+        `[LEADS 24H] rodada ${reason} | elegíveis=${result.eligible || 0} `
+        + `| enviados=${result.sent || 0} | painel=${result.panelPending || 0} | falhas=${result.failed || 0}`,
+      );
+    }
+    return result;
+  } finally {
+    alertRunning = false;
+  }
+}
+
 function startLifecycleMonitor() {
   if (global.__personalizeLeadLifecycleTimer) return global.__personalizeLeadLifecycleTimer;
   const timer = setInterval(() => {
@@ -124,16 +145,22 @@ function startLifecycleMonitor() {
         );
       }
       Cursor.purge({ ttlDays: recoveryConfig.cursorTtlDays });
+      LeadOperations.purge({ ttlDays: leadOperationsConfig.operationTtlDays });
+      void runAlertCycle('interval').catch((error) => {
+        console.warn('[LEADS 24H] falha na entrega automática:', error?.message || error);
+      });
     } catch (error) {
       console.warn('[LEADS 24H] falha ao atualizar ciclo:', error?.message || error);
     }
-  }, recoveryConfig.lifecycleRefreshMs);
+  }, Math.min(recoveryConfig.lifecycleRefreshMs, leadOperationsConfig.alertIntervalMs));
   timer.unref?.();
   global.__personalizeLeadLifecycleTimer = timer;
   return timer;
 }
 
 function attachChannelTools(channel) {
+  global.__personalizeActiveChannel = channel;
+  try { require('../services/qrAdminServer').setQrAdminChannel(channel); } catch (_) {}
   channel.__runConversationCursorRecovery = async (reason = 'manual') => {
     const staged = await Recovery.stageUnreadMessages({ channel });
     const recovered = await Recovery.recoverStaged(channel, `cursor-${reason}`);
@@ -144,6 +171,9 @@ function attachChannelTools(channel) {
   channel.__leadAbandonmentReport = (options = {}) => LeadReport.buildReport(options);
   channel.__writeLeadAbandonmentReport = (options = {}) => LeadReport.writeTxtReport(options);
   channel.__markLeadNotified = (conversationKey, payload = {}) => LeadReport.markNotified(conversationKey, payload);
+  channel.__runLeadAlerts = (reason = 'manual') => runAlertCycle(reason);
+  channel.__updateLeadOperation = (payload = {}) => LeadOperations.updateStatus(payload);
+  channel.__leadOperationStats = () => LeadOperations.stats();
 }
 
 function installConversationRecovery() {
@@ -192,6 +222,13 @@ function installConversationRecovery() {
       + `| persistidas=${staged.staged} | reenviadas=${recovered.replayed} `
       + `| leads24h=${lifecycle.abandoned + lifecycle.expired}`,
     );
+
+    const initialAlertTimer = setTimeout(() => {
+      void runAlertCycle('startup').catch((error) => {
+        console.warn('[LEADS 24H] falha na rodada inicial:', error?.message || error);
+      });
+    }, 5000);
+    initialAlertTimer.unref?.();
     return channel;
   };
 
@@ -206,6 +243,7 @@ module.exports = {
   installConversationRecovery,
   patchInboxLifecycle,
   patchLegacySingleMessageRecovery,
+  runAlertCycle,
   startLifecycleMonitor,
   _test: {
     originalListSessions,

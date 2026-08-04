@@ -3,11 +3,13 @@
 const http = require('http');
 const { connectionConfig } = require('../config/connectionConfig');
 const { getActiveConnectionSupervisor } = require('./connectionSupervisor');
+const { handleLeadPanelRequest } = require('./leadPanelApi');
 
 const host = process.env.QR_ADMIN_HOST || '127.0.0.1';
 const port = Number(process.env.QR_ADMIN_PORT || 3210);
 
 let clientRef = null;
+let channelRef = null;
 let started = false;
 let serverRef = null;
 
@@ -30,6 +32,11 @@ function readBody(request) {
 
 function setQrAdminClient(client) {
   clientRef = client || null;
+}
+
+function setQrAdminChannel(channel) {
+  channelRef = channel || null;
+  if (channel?.client) clientRef = channel.client;
 }
 
 function authorizationToken(request) {
@@ -66,6 +73,29 @@ function inboxSnapshot() {
   }
 }
 
+function operationalSnapshot() {
+  const output = {};
+  try { output.outboundLedger = require('./outboundLedgerStore').stats(); } catch (error) {
+    output.outboundLedger = { unavailable: true, error: String(error?.message || error) };
+  }
+  try { output.leadOperations = require('./leadOperationStore').stats(); } catch (error) {
+    output.leadOperations = { unavailable: true, error: String(error?.message || error) };
+  }
+  try {
+    const report = require('./leadAbandonmentReport').buildReport();
+    output.leads = {
+      total: report.total,
+      pendingNotification: report.pendingNotification,
+      pendingAction: report.pendingAction,
+      contacted: report.contacted,
+      discarded: report.discarded,
+    };
+  } catch (error) {
+    output.leads = { unavailable: true, error: String(error?.message || error) };
+  }
+  return output;
+}
+
 function readinessPayload() {
   const connection = connectionSnapshot();
   return {
@@ -98,8 +128,10 @@ function detailPayload() {
     memory: process.memoryUsage(),
     connection,
     inbox: inboxSnapshot(),
+    operations: operationalSnapshot(),
     client: {
       attached: Boolean(clientRef),
+      channelAttached: Boolean(channelRef),
       hasPage: Boolean(clientRef?.page || clientRef?.waPage),
       canGetConnectionState: typeof clientRef?.getConnectionState === 'function',
       canCheckConnected: typeof clientRef?.isConnected === 'function',
@@ -109,10 +141,8 @@ function detailPayload() {
   };
 }
 
-function startQrAdminServer() {
-  if (started) return serverRef;
-
-  const server = http.createServer(async (request, response) => {
+function createRequestHandler() {
+  return async (request, response) => {
     const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
 
     if (request.method === 'GET' && url.pathname === '/health/live') {
@@ -171,21 +201,33 @@ function startQrAdminServer() {
           sendJson(response, 200, { ok: true, warning: 'context_destroyed_after_logout' });
           return;
         }
-        sendJson(response, 500, {
-          ok: false,
-          error: message,
-        });
+        sendJson(response, 500, { ok: false, error: message });
       }
       return;
     }
 
-    sendJson(response, 404, { ok: false, error: 'not_found' });
-  });
+    const handled = await handleLeadPanelRequest({
+      request,
+      response,
+      url,
+      authorized: detailAuthorized(request),
+      channel: channelRef,
+    });
+    if (handled) return;
 
+    sendJson(response, 404, { ok: false, error: 'not_found' });
+  };
+}
+
+function startQrAdminServer() {
+  if (started) return serverRef;
+
+  const server = http.createServer(createRequestHandler());
   server.listen(port, host, () => {
     const address = server.address();
     const resolvedPort = typeof address === 'object' && address ? address.port : port;
     console.log(`[QR ADMIN] ouvindo em http://${host}:${resolvedPort}`);
+    console.log(`[LEADS 24H] painel operacional em http://${host}:${resolvedPort}/leads`);
   });
 
   serverRef = server;
@@ -193,12 +235,34 @@ function startQrAdminServer() {
   return server;
 }
 
+function stopQrAdminServer() {
+  return new Promise((resolve) => {
+    if (!serverRef) {
+      started = false;
+      resolve(false);
+      return;
+    }
+    const current = serverRef;
+    serverRef = null;
+    started = false;
+    current.close(() => resolve(true));
+  });
+}
+
+function getQrAdminServer() {
+  return serverRef;
+}
+
 module.exports = {
   authorizationToken,
   connectionSnapshot,
+  createRequestHandler,
   detailAuthorized,
   detailPayload,
+  getQrAdminServer,
   readinessPayload,
+  setQrAdminChannel,
   setQrAdminClient,
   startQrAdminServer,
+  stopQrAdminServer,
 };

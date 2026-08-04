@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Personalize · Leads parados</title>
+  <link rel="stylesheet" href="/leads/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Personalize · Atendimento</p>
+        <h1>Leads parados</h1>
+        <p class="subtitle">Clientes que ficaram 24 horas sem continuar o pré-atendimento.</p>
+      </div>
+      <div class="top-actions">
+        <button id="notifyButton" class="button secondary" type="button">Enviar avisos agora</button>
+        <button id="refreshButton" class="button primary" type="button">Atualizar</button>
+      </div>
+    </header>
+
+    <section id="authPanel" class="auth-panel hidden" aria-live="polite">
+      <div>
+        <strong>Acesso protegido</strong>
+        <p>Informe o token administrativo configurado no servidor.</p>
+      </div>
+      <div class="auth-fields">
+        <input id="tokenInput" type="password" autocomplete="current-password" placeholder="Token administrativo">
+        <input id="userInput" type="text" autocomplete="name" placeholder="Seu nome">
+        <button id="saveTokenButton" class="button primary" type="button">Entrar</button>
+      </div>
+    </section>
+
+    <section class="stats" aria-label="Resumo dos leads">
+      <article><span>Total parado</span><strong id="totalStat">—</strong></article>
+      <article><span>Aguardando ação</span><strong id="pendingStat">—</strong></article>
+      <article><span>Contatados</span><strong id="contactedStat">—</strong></article>
+      <article><span>Descartados</span><strong id="discardedStat">—</strong></article>
+      <article><span>Avisos pendentes</span><strong id="alertStat">—</strong></article>
+    </section>
+
+    <section class="toolbar">
+      <label>
+        <span>Buscar</span>
+        <input id="searchInput" type="search" placeholder="Nome, telefone, cidade ou serviço">
+      </label>
+      <label>
+        <span>Situação</span>
+        <select id="statusFilter">
+          <option value="">Todas</option>
+          <option value="PENDING">Pendente</option>
+          <option value="SEEN">Visto</option>
+          <option value="CONTACTED">Contatado</option>
+          <option value="DISCARDED">Descartado</option>
+        </select>
+      </label>
+      <p id="lastUpdated" class="last-updated">Ainda não atualizado.</p>
+    </section>
+
+    <section class="content-grid">
+      <div class="lead-list-panel">
+        <div id="feedback" class="feedback hidden" role="status"></div>
+        <div id="emptyState" class="empty hidden">
+          <strong>Nenhum lead neste filtro.</strong>
+          <p>Quando um cliente ficar 24 horas sem responder, ele aparecerá aqui automaticamente.</p>
+        </div>
+        <div id="leadList" class="lead-list"></div>
+      </div>
+
+      <aside id="detailPanel" class="detail-panel empty-detail">
+        <div id="detailPlaceholder">
+          <strong>Selecione um lead</strong>
+          <p>Veja a conversa completa e registre a ação do vendedor.</p>
+        </div>
+        <div id="detailContent" class="hidden">
+          <div class="detail-heading">
+            <div>
+              <span id="detailStatus" class="status-badge">Pendente</span>
+              <h2 id="detailName">Cliente</h2>
+              <p id="detailContact"></p>
+            </div>
+            <button id="downloadButton" class="button secondary" type="button">Baixar TXT</button>
+          </div>
+
+          <dl class="lead-meta">
+            <div><dt>Serviço</dt><dd id="detailService">—</dd></div>
+            <div><dt>Cidade</dt><dd id="detailCity">—</dd></div>
+            <div><dt>Etapa</dt><dd id="detailStage">—</dd></div>
+            <div><dt>Tempo parado</dt><dd id="detailIdle">—</dd></div>
+            <div><dt>Última mensagem</dt><dd id="detailLastMessage">—</dd></div>
+            <div><dt>Aviso</dt><dd id="detailAlert">—</dd></div>
+          </dl>
+
+          <div class="action-box">
+            <label>
+              <span>Observação do vendedor</span>
+              <textarea id="noteInput" rows="3" placeholder="Ex.: Cliente contatado pelo WhatsApp pessoal"></textarea>
+            </label>
+            <div class="action-buttons">
+              <button data-action="SEEN" class="button secondary" type="button">Marcar visto</button>
+              <button data-action="CONTACTED" class="button success" type="button">Marcar contatado</button>
+              <button data-action="DISCARDED" class="button danger" type="button">Descartar</button>
+            </div>
+          </div>
+
+          <section class="transcript-section">
+            <div class="section-title">
+              <h3>Conversa registrada</h3>
+              <span id="transcriptCount"></span>
+            </div>
+            <div id="transcript" class="transcript"></div>
+          </section>
+
+          <section class="audit-section">
+            <h3>Histórico de ações</h3>
+            <div id="auditList" class="audit-list"></div>
+          </section>
+        </div>
+      </aside>
+    </section>
+  </main>
+  <script src="/leads/app.js" defer></script>
+</body>
+</html>

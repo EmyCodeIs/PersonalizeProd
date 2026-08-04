@@ -5,6 +5,7 @@ const { AsyncLocalStorage } = require('async_hooks');
 const { env } = require('../config/env');
 const { sendBemVindos } = require('./mostruario');
 const { shouldSuppressTyping } = require('./runtimeProtection');
+const OutboundLedgerContext = require('./outboundLedgerContext');
 
 const responseContext = new AsyncLocalStorage();
 
@@ -91,25 +92,40 @@ function outboundTextRetryMs() {
   return Number.isFinite(value) && value >= 0 ? value : 700;
 }
 
-async function sendTextOnce(channel, clientId, text) {
+function ledgerOptionsForText(text, options = {}) {
+  if (options.ledgerOperationKey) return { ...options };
+  const operation = OutboundLedgerContext.nextOperation({
+    type: 'text',
+    text,
+    source: options.ledgerSource || 'messageExperience.sendText',
+  });
+  return {
+    ...options,
+    ledgerOperationKey: operation.operationKey || undefined,
+    ledgerSource: options.ledgerSource || operation.source || 'messageExperience.sendText',
+  };
+}
+
+async function sendTextOnce(channel, clientId, text, options = {}) {
   if (typeof channel?.__rawSendText === 'function') {
-    return channel.__rawSendText(clientId, text, { noDelay: true });
+    return channel.__rawSendText(clientId, text, { ...options, noDelay: true });
   }
   const chatId = normalizeChatId(clientId);
   if (typeof channel?.client?.sendText === 'function') {
     return channel.client.sendText(chatId, String(text || ''));
   }
-  return channel?.sendText?.(clientId, text, { noDelay: true });
+  return channel?.sendText?.(clientId, text, { ...options, noDelay: true });
 }
 
-async function sendTextDirect(channel, clientId, text) {
+async function sendTextDirect(channel, clientId, text, options = {}) {
   const attempts = outboundTextAttempts();
   const retryMs = outboundTextRetryMs();
+  const stableOptions = ledgerOptionsForText(text, options);
   let lastError = null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const result = await sendTextOnce(channel, clientId, text);
+      const result = await sendTextOnce(channel, clientId, text, stableOptions);
       if (result !== false && result !== null) return result === undefined ? true : result;
       lastError = new Error('OUTBOUND_TEXT_NOT_CONFIRMED');
       console.warn(
@@ -134,23 +150,23 @@ async function sendTextDirect(channel, clientId, text) {
 }
 
 async function sendTextWithLinkedWelcome(channel, clientId, text, options = {}) {
-  const result = await sendTextDirect(channel, clientId, text);
+  const result = await sendTextDirect(channel, clientId, text, options);
   if (isWelcomeText(text) && !options.skipWelcomeMedia) {
     await sendBemVindos(channel, clientId);
   }
   return result;
 }
 
-async function sendImageDirect(channel, clientId, filePath, caption = '') {
+async function sendImageDirect(channel, clientId, filePath, caption = '', options = {}) {
   if (typeof channel?.__rawSendImage === 'function') {
-    return channel.__rawSendImage(clientId, filePath, caption, { noDelay: true });
+    return channel.__rawSendImage(clientId, filePath, caption, { ...options, noDelay: true });
   }
   const chatId = normalizeChatId(clientId);
   const fullPath = path.resolve(process.cwd(), filePath);
   if (typeof channel?.client?.sendImage === 'function') {
     return channel.client.sendImage(chatId, fullPath, path.basename(fullPath), String(caption || ''));
   }
-  return channel?.sendImage?.(clientId, filePath, caption, { noDelay: true });
+  return channel?.sendImage?.(clientId, filePath, caption, { ...options, noDelay: true });
 }
 
 function installMessageExperience(channel) {
@@ -183,7 +199,7 @@ function installMessageExperience(channel) {
     channel.sendImage = async (clientId, filePath, caption = '', options = {}) => {
       const grouped = currentResponseOptions();
       if (grouped.grouped || options.noTyping) {
-        return sendImageDirect(channel, clientId, filePath, caption);
+        return sendImageDirect(channel, clientId, filePath, caption, options);
       }
 
       const chatId = normalizeChatId(clientId);
@@ -192,7 +208,7 @@ function installMessageExperience(channel) {
         : false;
       try {
         if (started) await wait(typingDuration(caption || 'Enviando imagem', options));
-        return await sendImageDirect(channel, clientId, filePath, caption);
+        return await sendImageDirect(channel, clientId, filePath, caption, options);
       } finally {
         if (started) await stopTypingCompat(channel.client, chatId);
       }
@@ -227,9 +243,11 @@ function installMessageExperience(channel) {
 
 module.exports = {
   installMessageExperience,
+  ledgerOptionsForText,
   outboundTextAttempts,
   outboundTextRetryMs,
   sendTextDirect,
+  sendTextOnce,
   startTypingCompat,
   stopTypingCompat,
   typingDuration,

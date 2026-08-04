@@ -4,17 +4,20 @@ const fs = require('fs');
 const path = require('path');
 const Identity = require('./contactIdentity');
 const Inbox = require('./messageInboxStore');
+const OutboundLedger = require('./outboundLedgerStore');
 const Cursor = require('./conversationCursorStore');
 const HumanControl = require('./humanControlStore');
 const Store = require('./leadStore');
 const Persistence = require('./persistence');
+const Operations = require('./leadOperationStore');
 const { recoveryConfig } = require('../config/recoveryConfig');
+const { leadOperationsConfig } = require('../config/leadOperationsConfig');
 
 const NOTIFICATION_PATH = path.join(process.cwd(), 'data', 'abandoned-lead-notifications.json');
 const notificationState = Persistence.readJson(NOTIFICATION_PATH, { records: {}, updatedAt: null });
 if (!notificationState.records || typeof notificationState.records !== 'object') notificationState.records = {};
 
-function clean(value, maxLength = 4000) {
+function clean(value, maxLength = 12000) {
   const text = String(value ?? '').replace(/\s+/g, ' ').trim();
   return text ? text.slice(0, maxLength) : '';
 }
@@ -53,9 +56,14 @@ function cursorClientId(cursor = {}) {
   return cursor.primaryChatId || cursor.aliases?.[0] || cursor.conversationKey || '';
 }
 
-function inboxRecordsForCursor(cursor = {}) {
+function cursorAliases(cursor = {}) {
   const aliases = new Set((cursor.aliases || []).map((item) => Identity.normalizeChatId(item)).filter(Boolean));
   if (cursor.primaryChatId) aliases.add(Identity.normalizeChatId(cursor.primaryChatId));
+  return aliases;
+}
+
+function inboxRecordsForCursor(cursor = {}) {
+  const aliases = cursorAliases(cursor);
   const key = cursor.conversationKey;
   return Inbox.listAll()
     .filter((record) => record.status !== Inbox.STATUS.RESET)
@@ -71,6 +79,13 @@ function inboxRecordsForCursor(cursor = {}) {
     .sort((a, b) => recordTimestamp(a) - recordTimestamp(b));
 }
 
+function outboundRecordsForCursor(cursor = {}) {
+  const clientId = cursorClientId(cursor);
+  const resetAt = timestamp(cursor.resetAt);
+  return OutboundLedger.listConversation(clientId, { after: resetAt })
+    .sort((a, b) => timestamp(a.sentAt || a.createdAt) - timestamp(b.sentAt || b.createdAt));
+}
+
 function firstMessages(records = [], limit = 3) {
   return records
     .filter((record) => clean(record.text || record.raw?.body || record.raw?.caption, 4000))
@@ -81,16 +96,57 @@ function firstMessages(records = [], limit = 3) {
     }));
 }
 
-function latestMessages(records = [], limit = recoveryConfig.reportMessageLimit) {
-  return records
-    .filter((record) => clean(record.text || record.raw?.body || record.raw?.caption, 4000))
-    .slice(-Math.max(1, Number(limit || 20)))
+function outboundText(record = {}) {
+  const text = clean(record.text || record.caption, 12000);
+  if (text) return text;
+  if (record.type === 'image') return `[imagem enviada${record.filename ? `: ${record.filename}` : ''}]`;
+  if (/document/.test(record.type || '')) return `[arquivo enviado${record.filename ? `: ${record.filename}` : ''}]`;
+  if (record.type === 'list') return '[lista interativa enviada]';
+  return `[saída ${record.type || 'desconhecida'}]`;
+}
+
+function combinedTranscript(cursor = {}, incoming = [], options = {}) {
+  const maxMessages = Math.max(100, Number(options.maxMessages || leadOperationsConfig.transcriptMaxMessages));
+  const customer = incoming.map((record) => ({
+    at: new Date(recordTimestamp(record)).toISOString(),
+    atMs: recordTimestamp(record),
+    actor: 'CLIENTE',
+    type: record.raw?.type || 'text',
+    text: clean(record.text || record.raw?.body || record.raw?.caption, 12000),
+    messageId: record.messageId || null,
+    status: record.status,
+  })).filter((item) => item.text);
+
+  const outgoingAll = outboundRecordsForCursor(cursor);
+  const bot = outgoingAll
+    .filter((record) => record.status === OutboundLedger.STATUS.SENT)
     .map((record) => ({
-      at: new Date(recordTimestamp(record)).toISOString(),
-      actor: 'CLIENTE',
-      text: clean(record.text || record.raw?.body || record.raw?.caption, 2000),
+      at: record.sentAt || record.createdAt,
+      atMs: timestamp(record.sentAt || record.createdAt),
+      actor: record.actor || 'BOT',
+      type: record.type,
+      text: outboundText(record),
       messageId: record.messageId || null,
+      status: record.status,
     }));
+
+  const messages = [...customer, ...bot]
+    .sort((a, b) => a.atMs - b.atMs || String(a.messageId || '').localeCompare(String(b.messageId || '')))
+    .slice(-maxMessages)
+    .map(({ atMs, ...item }) => item);
+
+  const warnings = outgoingAll
+    .filter((record) => record.status !== OutboundLedger.STATUS.SENT)
+    .map((record) => ({
+      id: record.id,
+      status: record.status,
+      at: record.updatedAt || record.createdAt,
+      type: record.type,
+      summary: outboundText(record),
+      error: record.lastError || null,
+    }));
+
+  return { messages, warnings, outgoingTotal: outgoingAll.length };
 }
 
 function notificationFor(key, lastCustomerMessageAt) {
@@ -160,6 +216,62 @@ function refreshLifecycle(options = {}) {
   return summary;
 }
 
+function buildLead(cursor, sessions, now) {
+  const clientId = cursorClientId(cursor);
+  const records = inboxRecordsForCursor(cursor);
+  if (!records.length) return null;
+  const firstAt = recordTimestamp(records[0]);
+  const lastAt = recordTimestamp(records[records.length - 1]);
+  const lastAtIso = new Date(lastAt).toISOString();
+  const session = sessions.get(cursor.conversationKey) || cursor.session || {};
+  const profile = (() => {
+    try { return Store.getCustomerProfile(clientId); } catch (_) { return null; }
+  })();
+  const notification = notificationFor(cursor.conversationKey, lastAtIso);
+  const phone = (() => {
+    try { return Identity.resolveContact(clientId)?.phone || null; } catch (_) { return null; }
+  })();
+  const transcript = combinedTranscript(cursor, records);
+  const base = {
+    id: `pending:${cursor.conversationKey}`,
+    conversationKey: cursor.conversationKey,
+    clientId,
+    phone,
+    customerName: session?.customerName || session?.dados?.nome || profile?.knownName || null,
+    service: session?.service || session?.dados?.flow || null,
+    city: session?.city || session?.dados?.cidade || null,
+    stage: session?.etapa || 'desconhecida',
+    lifecycle: cursor.lifecycle,
+    lifecycleReason: cursor.lifecycleReason || null,
+    firstContactAt: new Date(firstAt).toISOString(),
+    lastCustomerMessageAt: lastAtIso,
+    idleHours: Math.max(0, Math.floor((now - lastAt) / 3600000)),
+    firstMessages: firstMessages(records, 3),
+    transcript: transcript.messages,
+    transcriptWarnings: transcript.warnings,
+    transcriptCoverage: 'CLIENT_AND_BOT_FROM_PERSISTENT_LEDGERS',
+    outgoingLedgerTotal: transcript.outgoingTotal,
+    notifiedAt: notification?.notifiedAt || null,
+    sessionExpired: cursor.lifecycle === 'EXPIRED',
+  };
+  const operation = Operations.ensureLead(base, { source: 'lead_report' });
+  const closedBySeller = [Operations.STATUS.CONTACTED, Operations.STATUS.DISCARDED].includes(operation?.status);
+  return {
+    ...base,
+    operationId: operation?.id || null,
+    operationStatus: operation?.status || Operations.STATUS.PENDING,
+    assignedTo: operation?.assignedTo || null,
+    operationNote: operation?.note || null,
+    seenAt: operation?.seenAt || null,
+    contactedAt: operation?.contactedAt || null,
+    discardedAt: operation?.discardedAt || null,
+    alertStatus: operation?.alertStatus || 'PENDING',
+    alertAttempts: Number(operation?.alertAttempts || 0),
+    needsNotification: !notification && !closedBySeller,
+    audit: operation?.audit || [],
+  };
+}
+
 function buildReport(options = {}) {
   const now = Number(options.now || Date.now());
   const thresholdHours = Math.max(1, Number(options.thresholdHours || recoveryConfig.abandonedLeadHours));
@@ -169,40 +281,8 @@ function buildReport(options = {}) {
 
   for (const cursor of Cursor.listAll()) {
     if (!['ABANDONED_24H', 'EXPIRED'].includes(cursor.lifecycle)) continue;
-    const clientId = cursorClientId(cursor);
-    const records = inboxRecordsForCursor(cursor);
-    if (!records.length) continue;
-    const firstAt = recordTimestamp(records[0]);
-    const lastAt = recordTimestamp(records[records.length - 1]);
-    const session = sessions.get(cursor.conversationKey) || cursor.session || {};
-    const profile = (() => {
-      try { return Store.getCustomerProfile(clientId); } catch (_) { return null; }
-    })();
-    const notification = notificationFor(cursor.conversationKey, new Date(lastAt).toISOString());
-    const phone = (() => {
-      try { return Identity.resolveContact(clientId)?.phone || null; } catch (_) { return null; }
-    })();
-    leads.push({
-      id: `pending:${cursor.conversationKey}`,
-      conversationKey: cursor.conversationKey,
-      clientId,
-      phone,
-      customerName: session?.customerName || session?.dados?.nome || profile?.knownName || null,
-      service: session?.service || session?.dados?.flow || null,
-      city: session?.city || session?.dados?.cidade || null,
-      stage: session?.etapa || 'desconhecida',
-      lifecycle: cursor.lifecycle,
-      lifecycleReason: cursor.lifecycleReason || null,
-      firstContactAt: new Date(firstAt).toISOString(),
-      lastCustomerMessageAt: new Date(lastAt).toISOString(),
-      idleHours: Math.max(0, Math.floor((now - lastAt) / 3600000)),
-      firstMessages: firstMessages(records, 3),
-      transcript: latestMessages(records),
-      transcriptCoverage: 'CLIENT_MESSAGES_ONLY_UNTIL_OUTBOUND_LEDGER',
-      notifiedAt: notification?.notifiedAt || null,
-      needsNotification: !notification,
-      sessionExpired: cursor.lifecycle === 'EXPIRED',
-    });
+    const lead = buildLead(cursor, sessions, now);
+    if (lead) leads.push(lead);
   }
 
   leads.sort((a, b) => timestamp(a.lastCustomerMessageAt) - timestamp(b.lastCustomerMessageAt));
@@ -211,13 +291,63 @@ function buildReport(options = {}) {
     thresholdHours,
     total: leads.length,
     pendingNotification: leads.filter((lead) => lead.needsNotification).length,
+    pendingAction: leads.filter((lead) => [Operations.STATUS.PENDING, Operations.STATUS.SEEN].includes(lead.operationStatus)).length,
+    contacted: leads.filter((lead) => lead.operationStatus === Operations.STATUS.CONTACTED).length,
+    discarded: leads.filter((lead) => lead.operationStatus === Operations.STATUS.DISCARDED).length,
     leads,
   };
+}
+
+function findLead(conversationKey, lastCustomerMessageAt, options = {}) {
+  const report = buildReport(options);
+  const lead = report.leads.find((item) => (
+    item.conversationKey === conversationKey
+    && timestamp(item.lastCustomerMessageAt) === timestamp(lastCustomerMessageAt)
+  ));
+  return lead || null;
 }
 
 function formatDate(value) {
   if (!value) return '-';
   try { return new Date(value).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }); } catch (_) { return value; }
+}
+
+function leadToTxt(lead = {}, report = {}) {
+  const lines = [
+    'RELATÓRIO DE LEAD PARADO',
+    `Gerado em: ${formatDate(report.generatedAt || new Date().toISOString())}`,
+    `Critério: ${report.thresholdHours || recoveryConfig.abandonedLeadHours} hora(s) sem nova mensagem`,
+    '',
+    `Nome: ${lead.customerName || 'Não identificado'}`,
+    `Contato: ${lead.phone || lead.clientId || '-'}`,
+    `Serviço: ${lead.service || '-'}`,
+    `Cidade: ${lead.city || '-'}`,
+    `Etapa: ${lead.stage || '-'}`,
+    `Situação do fluxo: ${lead.lifecycle || '-'}`,
+    `Situação no painel: ${lead.operationStatus || Operations.STATUS.PENDING}`,
+    `Primeiro contato: ${formatDate(lead.firstContactAt)}`,
+    `Última mensagem: ${formatDate(lead.lastCustomerMessageAt)}`,
+    `Tempo parado: ${Number(lead.idleHours || 0)} hora(s)`,
+    '',
+    'CONVERSA COMPLETA REGISTRADA',
+  ];
+
+  for (const message of lead.transcript || []) {
+    const type = message.type && !['text', 'chat'].includes(String(message.type).toLowerCase())
+      ? ` (${message.type})`
+      : '';
+    lines.push(`[${formatDate(message.at)}] ${message.actor}${type}: ${message.text}`);
+  }
+
+  if (!(lead.transcript || []).length) lines.push('[Nenhuma mensagem disponível]');
+  if ((lead.transcriptWarnings || []).length) {
+    lines.push('', 'AVISOS DO LEDGER DE SAÍDA');
+    for (const warning of lead.transcriptWarnings) {
+      lines.push(`[${formatDate(warning.at)}] ${warning.status}: ${warning.summary}${warning.error ? ` | ${warning.error}` : ''}`);
+    }
+  }
+  lines.push('', 'Cobertura: mensagens do cliente persistidas pela Inbox e respostas do bot persistidas pelo ledger de saída a partir da ativação desta etapa.');
+  return `${lines.join('\n').trim()}\n`;
 }
 
 function toTxt(report = {}) {
@@ -227,29 +357,12 @@ function toTxt(report = {}) {
     `Critério: ${report.thresholdHours || 24} hora(s) sem nova mensagem`,
     `Total: ${report.total || 0}`,
     `Aguardando aviso: ${report.pendingNotification || 0}`,
+    `Aguardando ação: ${report.pendingAction || 0}`,
     '',
   ];
-
   for (const [index, lead] of (report.leads || []).entries()) {
-    lines.push(`LEAD ${index + 1}`);
-    lines.push(`Nome: ${lead.customerName || 'Não identificado'}`);
-    lines.push(`Contato: ${lead.phone || lead.clientId || '-'}`);
-    lines.push(`Serviço: ${lead.service || '-'}`);
-    lines.push(`Cidade: ${lead.city || '-'}`);
-    lines.push(`Etapa: ${lead.stage || '-'}`);
-    lines.push(`Situação: ${lead.lifecycle}`);
-    lines.push(`Primeiro contato: ${formatDate(lead.firstContactAt)}`);
-    lines.push(`Última mensagem: ${formatDate(lead.lastCustomerMessageAt)}`);
-    lines.push(`Tempo parado: ${lead.idleHours} hora(s)`);
-    lines.push('Primeiras mensagens:');
-    for (const message of lead.firstMessages || []) {
-      lines.push(`  [${formatDate(message.at)}] ${message.text}`);
-    }
-    lines.push('Conversa registrada:');
-    for (const message of lead.transcript || []) {
-      lines.push(`  [${formatDate(message.at)}] ${message.actor}: ${message.text}`);
-    }
-    lines.push('Observação: nesta etapa o TXT contém as mensagens do cliente; as respostas do bot entram quando o ledger persistente de saída for implementado.');
+    lines.push(`================ LEAD ${index + 1} ================`);
+    lines.push(leadToTxt(lead, report).trim());
     lines.push('');
   }
   return `${lines.join('\n').trim()}\n`;
@@ -265,14 +378,30 @@ function writeTxtReport(options = {}) {
   return { report, filePath };
 }
 
+function writeLeadTxt(lead, options = {}) {
+  if (!lead) throw new Error('LEAD_REQUIRED');
+  const generatedAt = options.generatedAt || new Date().toISOString();
+  const dir = path.resolve(process.cwd(), options.outputDir || path.join('data', 'reports', 'leads'));
+  fs.mkdirSync(dir, { recursive: true });
+  const safe = clean(lead.phone || lead.conversationKey || 'lead', 120).replace(/[^a-zA-Z0-9_-]+/g, '-');
+  const stamp = generatedAt.replace(/[:.]/g, '-');
+  const filePath = path.join(dir, `lead-${safe}-${stamp}.txt`);
+  fs.writeFileSync(filePath, leadToTxt(lead, { generatedAt, thresholdHours: options.thresholdHours }), 'utf8');
+  return { filePath, content: fs.readFileSync(filePath, 'utf8') };
+}
+
 module.exports = {
   buildReport,
+  combinedTranscript,
+  findLead,
   firstMessages,
   inboxRecordsForCursor,
-  latestMessages,
+  leadToTxt,
   markNotified,
+  outboundRecordsForCursor,
   refreshLifecycle,
   toTxt,
+  writeLeadTxt,
   writeTxtReport,
   _test: {
     notificationFor,

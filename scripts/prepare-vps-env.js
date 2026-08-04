@@ -34,7 +34,7 @@ function setLine(content, key, value) {
 const template = fs.readFileSync(templatePath, 'utf8').replaceAll('__DOMAIN__', domain);
 const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
 let output = existing.trim() ? existing : template;
-const current = parseCurrent(output);
+let current = parseCurrent(output);
 
 const encryptionKey = current.get('DATA_ENCRYPTION_KEY');
 if (!encryptionKey || encryptionKey.includes('__GENERATED_')) {
@@ -44,6 +44,12 @@ if (!encryptionKey || encryptionKey.includes('__GENERATED_')) {
 const backupPassphrase = current.get('VPS_BACKUP_PASSPHRASE');
 if (!backupPassphrase || backupPassphrase.includes('__GENERATED_')) {
   output = setLine(output, 'VPS_BACKUP_PASSPHRASE', crypto.randomBytes(32).toString('base64url'));
+}
+
+current = parseCurrent(output);
+const adminToken = current.get('QR_ADMIN_DETAIL_TOKEN');
+if (!adminToken || adminToken.includes('__GENERATED_')) {
+  output = setLine(output, 'QR_ADMIN_DETAIL_TOKEN', crypto.randomBytes(32).toString('base64url'));
 }
 
 const required = {
@@ -66,13 +72,36 @@ const required = {
   BROWSER_CACHE_MAX_AGE_DAYS: '3',
   BROWSER_CACHE_AUTO_CLEAN: 'true',
   TOKEN_CACHE_AUTO_CLEAN: 'true',
+  QR_ADMIN_HOST: '127.0.0.1',
+  QR_ADMIN_PORT: '3210',
+  CONVERSATION_CURSOR_ENABLED: 'true',
+  OUTBOUND_LEDGER_ENABLED: 'true',
+  OUTBOUND_LEDGER_UNCERTAIN_AFTER_MS: '300000',
+  OUTBOUND_LEDGER_TTL_DAYS: '180',
+  OUTBOUND_LEDGER_FAILED_TTL_DAYS: '365',
+  OUTBOUND_LEDGER_MAX_ENTRIES: '50000',
+  OUTBOUND_LEDGER_MAX_ATTEMPTS: '3',
+  LEAD_TRANSCRIPT_MAX_MESSAGES: '2000',
+  LEAD_OPERATION_TTL_DAYS: '365',
+  LEAD_PANEL_ENABLED: 'true',
+  LEAD_PANEL_PUBLIC_URL: `https://${domain}/leads`,
+  LEAD_ALERT_ENABLED: 'true',
+  LEAD_ALERT_INTERVAL_MS: '900000',
+  LEAD_ALERT_MAX_PER_RUN: '20',
+  LEAD_ALERT_SEND_TXT: 'true',
 };
 for (const [key, value] of Object.entries(required)) output = setLine(output, key, value);
+
+if (!parseCurrent(output).has('LEAD_ALERT_RECIPIENT_CHAT_IDS')) {
+  output = setLine(output, 'LEAD_ALERT_RECIPIENT_CHAT_IDS', '');
+}
 
 fs.writeFileSync(envPath, `${output.trim()}\n`, { encoding: 'utf8', mode: 0o600 });
 try { fs.chmodSync(envPath, 0o600); } catch (_) {}
 
 console.log(`[VPS] .env preparado para: https://${domain}/vnc.html?autoconnect=true&resize=scale`);
+console.log(`[VPS] painel de leads preparado em: https://${domain}/leads`);
 console.log('[VPS] usuário do link: personalize');
 console.log('[VPS] senha solicitada: 2580 (fraca; troca recomendada depois)');
-console.log('[VPS] chave de banco e senha de backup geradas sem exibição no terminal.');
+console.log('[VPS] chave de banco, senha de backup e token administrativo gerados sem exibição no terminal.');
+console.log('[VPS] aviso por WhatsApp permanece inativo até preencher LEAD_ALERT_RECIPIENT_CHAT_IDS.');

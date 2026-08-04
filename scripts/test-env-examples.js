@@ -31,7 +31,15 @@ for (const filename of ['.env.vps.example', '.env.vps.ready.example']) {
   assert.equal(parsed.ALLOW_WEAK_SESSION_PASSWORD, 'true');
   assert.equal(parsed.BROWSER_CACHE_DIR, 'data/browser-cache');
   assert.equal(parsed.TOKEN_CACHE_AUTO_CLEAN, 'true');
+  assert.equal(parsed.OUTBOUND_LEDGER_ENABLED, 'true');
+  assert.equal(parsed.OUTBOUND_LEDGER_UNCERTAIN_AFTER_MS, '300000');
+  assert.equal(parsed.LEAD_PANEL_ENABLED, 'true');
+  assert.equal(parsed.LEAD_ALERT_ENABLED, 'true');
+  assert.equal(parsed.LEAD_ALERT_RECIPIENT_CHAT_IDS, '');
+  assert.equal(parsed.LEAD_ALERT_SEND_TXT, 'true');
+  assert.equal(parsed.QR_ADMIN_DETAIL_TOKEN, '__GENERATED_ADMIN_TOKEN__');
+  assert.match(parsed.LEAD_PANEL_PUBLIC_URL, /^https:\/\/__DOMAIN__\/leads$/);
   assert.match(parsed.SESSION_ACCESS_PUBLIC_URL, /^https:\/\/__DOMAIN__\//);
 }
 
-console.log('✅ Ambiente VPS verificado: SQLite criptografado, noVNC privado, senha configurada e cache fora de tokens.');
+console.log('✅ Ambiente VPS verificado: SQLite, noVNC, ledger, painel protegido, alertas seguros e cache fora de tokens.');
