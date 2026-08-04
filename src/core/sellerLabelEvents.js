@@ -48,6 +48,16 @@ function normalizeName(value) {
     .trim();
 }
 
+function operationalLabelNames() {
+  return new Set([
+    env.serviceLabelLetreiro,
+    env.serviceLabelPlotagem,
+    env.serviceLabelOutros,
+    env.supportLabelName,
+    ...(Array.isArray(env.serviceLabelReplaceGroup) ? env.serviceLabelReplaceGroup : []),
+  ].map(normalizeName).filter(Boolean));
+}
+
 function sellerFromEventNames(names = []) {
   const byNormalizedName = new Map(
     Object.keys(env.sellerLabelRules || {}).map((name) => [normalizeName(name), name]),
@@ -60,7 +70,15 @@ function sellerFromEventNames(names = []) {
 }
 
 function firstManualLabelName(names = []) {
-  return names.map((name) => String(name || '').trim()).find(Boolean) || null;
+  const operational = operationalLabelNames();
+  const sellers = new Set(Object.keys(env.sellerLabelRules || {}).map(normalizeName));
+
+  return names
+    .map((name) => String(name || '').trim())
+    .find((name) => {
+      const normalized = normalizeName(name);
+      return Boolean(normalized && !operational.has(normalized) && !sellers.has(normalized));
+    }) || null;
 }
 
 function existingSessionFor(clientId) {
@@ -127,6 +145,15 @@ function createSellerLabelUpdateHandler(options = {}) {
       const duplicate = Number(seen.get(key) || 0) > (now - 15000);
       seen.set(key, now);
 
+      HumanControl.setBlock(chatId, {
+        reason: 'seller_label',
+        source: 'seller_label_event',
+        seller: sellerFromEvent.seller,
+        labelName: sellerFromEvent.labelName,
+        persistent: true,
+        blockedHours: env.humanBlockHours,
+      });
+
       persistSellerStatus(chatId, {
         status: 'assigned',
         seller: sellerFromEvent.seller,
@@ -149,6 +176,7 @@ function createSellerLabelUpdateHandler(options = {}) {
       return {
         handled: true,
         assigned: true,
+        blocked: true,
         chatId,
         guard: {
           blocked: true,
@@ -197,6 +225,7 @@ function createSellerLabelUpdateHandler(options = {}) {
       return {
         handled: true,
         assigned: true,
+        blocked: true,
         chatId,
         guard: {
           blocked: true,
@@ -211,8 +240,9 @@ function createSellerLabelUpdateHandler(options = {}) {
     if (delayMs) await wait(delayMs);
 
     const guard = await SellerHandoff.getAutomationBlock(channel, chatId);
-    if (guard?.blocked && guard.reason === 'seller_label') {
-      const key = `${chatId}:assigned:${guard.seller || guard.labelName || '-'}`;
+    if (guard?.blocked) {
+      const removed = type === 'remove';
+      const key = `${chatId}:blocked:${guard.reason || guard.seller || guard.labelName || '-'}`;
       const now = Date.now();
       const duplicate = Number(seen.get(key) || 0) > (now - 15000);
       seen.set(key, now);
@@ -227,30 +257,35 @@ function createSellerLabelUpdateHandler(options = {}) {
       clearBuffer(chatId);
 
       if (!duplicate) {
-        const session = existingSessionFor(chatId);
-        const phase = session?.completed || session?.dados?.botDone ? 'concluído' : 'em_andamento';
-        console.log(
-          `[HANDOFF][VENDEDOR] cliente assumido | cliente=${chatId} | vendedor=${guard.seller || '-'} `
-          + `| etiqueta="${guard.labelName || '-'}" | préAtendimento=${phase} | evento=${type}`,
-        );
+        if (removed) {
+          console.log(
+            `[HANDOFF] etiqueta removida; bloqueio persistente mantido | cliente=${chatId} `
+            + `| motivo=${guard.reason || '-'} | etiqueta="${guard.labelName || names.join(', ') || '-'}"`,
+          );
+        } else {
+          console.log(
+            `[HANDOFF] bloqueio confirmado após evento de etiqueta | cliente=${chatId} `
+            + `| motivo=${guard.reason || '-'} | etiqueta="${guard.labelName || '-'}"`,
+          );
+        }
       }
-      return { handled: true, assigned: true, chatId, guard };
-    }
 
-    if (guard?.source === 'seller_label_removed') {
-      persistSellerStatus(chatId, {
-        status: 'released',
-        releasedAt: new Date().toISOString(),
-      });
-      console.log(`[HANDOFF][VENDEDOR] etiqueta removida; automação liberada | cliente=${chatId}`);
-      return { handled: true, assigned: false, released: true, chatId, guard };
+      return {
+        handled: true,
+        assigned: true,
+        blocked: true,
+        removed,
+        released: false,
+        chatId,
+        guard,
+      };
     }
 
     console.log(
-      `[ETIQUETAS][EVENTO] alteração externa sem vendedor ativo | cliente=${chatId} `
+      `[ETIQUETAS][EVENTO] alteração externa sem bloqueio ativo | cliente=${chatId} `
       + `| tipo=${type} | etiquetas=${names.join(', ') || '-'}`,
     );
-    return { handled: true, assigned: false, chatId, guard };
+    return { handled: true, assigned: false, blocked: false, chatId, guard };
   };
 }
 
@@ -258,8 +293,10 @@ module.exports = {
   createSellerLabelUpdateHandler,
   existingSessionFor,
   extractLabelUpdateChatId,
+  firstManualLabelName,
   labelNamesFromUpdate,
   normalizeName,
+  operationalLabelNames,
   sellerFromEventNames,
   persistSellerStatus,
   serializedId,
