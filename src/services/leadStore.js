@@ -215,6 +215,26 @@ function resetSession(clientId) {
   return state.sessions[id];
 }
 
+function resetConversation(clientId, options = {}) {
+  const id = normalizeClientId(clientId);
+  if (!id) return null;
+
+  const hadSession = Boolean(state.sessions[id]);
+  const hadProfile = Boolean(profileState.profiles[id]);
+  delete state.sessions[id];
+  if (options.clearProfile !== false) delete profileState.profiles[id];
+
+  state.sessions[id] = createSession(id, clientId);
+  persistState();
+  if (options.clearProfile !== false) persistProfiles();
+
+  return {
+    session: state.sessions[id],
+    removedSession: hadSession,
+    removedProfile: options.clearProfile !== false && hadProfile,
+  };
+}
+
 function getCustomerProfile(clientId) {
   const id = normalizeClientId(clientId);
   if (!id) return null;
@@ -333,9 +353,7 @@ function listSessions() {
 function resetSystem() {
   const previousSessionCount = Object.keys(state.sessions || {}).length;
   const previousProfileCount = Object.keys(profileState.profiles || {}).length;
-  let previousLeadCount = 0;
-
-  previousLeadCount = Persistence.countJsonLines(LEADS_PATH);
+  const previousLeadCount = Persistence.countJsonLines(LEADS_PATH);
 
   state.sessions = {};
   persistState();
@@ -362,6 +380,7 @@ module.exports = {
   getSession,
   saveSession,
   resetSession,
+  resetConversation,
   resetSystem,
   appendLead,
   listSessions,
