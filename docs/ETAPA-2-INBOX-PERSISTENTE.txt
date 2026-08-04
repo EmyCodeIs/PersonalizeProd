@@ -1,0 +1,226 @@
+ETAPA 2 — INBOX PERSISTENTE E COORDENAÇÃO DE MENSAGENS
+PersonalizeProd
+Data: 04/08/2026
+
+OBJETIVO
+
+Garantir que uma mensagem recebida pelo WhatsApp seja registrada antes de chegar ao fluxo e continue rastreável após reinício, timeout ou falha do processo.
+
+1. FONTE DE VERDADE
+
+Arquivo principal:
+
+src/services/messageInboxStore.js
+
+Cada mensagem possui um registro próprio.
+
+No STORAGE_DRIVER=sqlite:
+- cada mensagem ocupa uma linha em secure_inbox_messages;
+- o conteúdo completo fica criptografado com AES-256-GCM;
+- somente campos operacionais de índice ficam fora do payload criptografado;
+- não são gravados arquivos ou mídias em base64.
+
+No STORAGE_DRIVER=file:
+- data/message-inbox.json mantém compatibilidade para desenvolvimento local e testes.
+
+2. IDENTIDADE E DEDUPLICAÇÃO
+
+Quando o WhatsApp fornece messageId:
+
+msg:<messageId>
+
+Quando não fornece, o sistema cria uma impressão SHA-256 usando:
+- conversa;
+- texto ou ação interativa;
+- tipo;
+- timestamp.
+
+A mesma mensagem recebida por evento ao vivo, bootstrap de não lidas, retomada de histórico ou reconexão utiliza o mesmo registro.
+
+A deduplicação sobrevive ao reinício do Node.js e da VPS.
+
+3. ESTADOS
+
+RECEIVED
+Mensagem persistida antes do fluxo.
+
+BUFFERED
+Mensagem aguardando o agrupamento da conversa.
+
+QUEUED
+Grupo entregue à fila global.
+
+PROCESSING
+Fluxo em execução com lease ativo.
+
+PROCESSED
+Fluxo concluído com sucesso.
+
+IGNORED_HANDOFF
+Mensagem descartada porque há atendimento humano persistente.
+
+IGNORED_POLICY
+Mensagem rejeitada antes do buffer por regra de entrada, comando ou política.
+
+FAILED_RETRYABLE
+Falha temporária aguardando nova tentativa.
+
+FAILED_FINAL
+Limite de tentativas atingido. Funciona como dead-letter.
+
+RESET
+Mensagem pendente invalidada por /resetarsys autorizado.
+
+4. LEASE DE PROCESSAMENTO
+
+Ao iniciar o fluxo, o runtime adquire um lease por mensagem.
+
+Padrão:
+- lease mínimo de 120 segundos;
+- renovação automática durante o processamento;
+- owner identifica processo e geração em execução.
+
+Se o processo cair:
+- o lease vence;
+- a mensagem volta a ser recuperável;
+- outro runtime pode retomar;
+- um lease ainda válido não pode ser processado por outro runtime.
+
+O timeout público da fila não libera o registro imediatamente. A tarefa real pode concluir e marcar PROCESSED sem criar uma execução duplicada.
+
+5. RETRY E DEAD-LETTER
+
+Padrão:
+- até 3 tentativas;
+- backoff exponencial;
+- 5 segundos na primeira espera;
+- limite máximo de 15 minutos.
+
+Quando uma tentativa falha:
+- erro e código são registrados;
+- lease é removido;
+- availableAt define a próxima tentativa.
+
+Ao atingir o limite:
+- status passa para FAILED_FINAL;
+- não retorna automaticamente ao fluxo;
+- permanece disponível para auditoria e futura ação administrativa.
+
+6. RECUPERAÇÃO
+
+Arquivo:
+
+src/core/messageInboxPreload.js
+
+O preload é carregado por último para capturar as versões finais de:
+- WppClient.createWppChannel;
+- BufferManager;
+- CustomerFlow.processCustomerMessage.
+
+Na inicialização e nas rodadas de retry:
+1. localiza registros recuperáveis;
+2. ignora handoff persistente;
+3. invalida lease vencido;
+4. recria payload mínimo seguro;
+5. envia pelo mesmo onMessage do atendimento ao vivo;
+6. passa pelo mesmo buffer, fila e fluxo.
+
+O ID temporário de replay é diferente apenas para ultrapassar a deduplicação antiga em memória. A identidade persistente original continua sendo a mesma.
+
+7. INTEGRAÇÃO COM BUFFER
+
+Antes de BufferManager.push:
+- status passa para BUFFERED;
+- o alias real da conversa é atualizado.
+
+No flush:
+- status passa para QUEUED.
+
+Se a tarefa não começar:
+- handoff gera IGNORED_HANDOFF;
+- falha de fila ou política operacional gera FAILED_RETRYABLE.
+
+Quando uma etiqueta ou mensagem humana limpa o buffer:
+- mensagens pendentes são finalizadas como ignoradas por handoff.
+
+8. INTEGRAÇÃO COM O FLUXO
+
+Antes de processCustomerMessage:
+- o grupo adquire lease;
+- tentativas são incrementadas;
+- heartbeat renova o lease.
+
+Depois do fluxo:
+- sucesso gera PROCESSED;
+- exceção gera FAILED_RETRYABLE ou FAILED_FINAL.
+
+O grupo só é processado quando todas as mensagens conseguem adquirir lease.
+
+9. INTEGRAÇÃO COM /RESETARSYS
+
+/resetarsys continua sendo interceptado pelo ResetService da Etapa 1.
+
+Depois da limpeza:
+- mensagens pendentes somente daquela conversa recebem RESET;
+- registros de outros clientes permanecem intactos;
+- itens antigos do tester não podem ser recuperados depois do reset.
+
+10. MANUTENÇÃO
+
+Padrões:
+- processados e ignorados: retenção de 7 dias;
+- falhas finais: retenção de 30 dias;
+- máximo de 20.000 registros;
+- manutenção a cada 15 minutos.
+
+Os limites podem ser configurados por variáveis MESSAGE_INBOX_*.
+
+11. VARIÁVEIS
+
+MESSAGE_INBOX_ENABLED=true
+MESSAGE_INBOX_LEASE_MS=120000
+MESSAGE_INBOX_MAX_ATTEMPTS=3
+MESSAGE_INBOX_RETRY_BASE_MS=5000
+MESSAGE_INBOX_RETRY_MAX_MS=900000
+MESSAGE_INBOX_RETRY_POLL_MS=15000
+MESSAGE_INBOX_RECOVERY_DELAY_MS=2500
+MESSAGE_INBOX_RECOVERY_BATCH_SIZE=50
+MESSAGE_INBOX_STALE_MS=30000
+MESSAGE_INBOX_PROCESSED_TTL_DAYS=7
+MESSAGE_INBOX_FAILED_TTL_DAYS=30
+MESSAGE_INBOX_MAX_ENTRIES=20000
+MESSAGE_INBOX_MAINTENANCE_MS=900000
+
+12. TESTES
+
+scripts/test-message-inbox-store.js
+- persistência após reinício;
+- deduplicação;
+- retry;
+- dead-letter;
+- reset isolado;
+- lease vencido.
+
+scripts/test-message-inbox-runtime.js
+- integração canal → buffer → fluxo;
+- processamento exatamente uma vez;
+- retry real;
+- handoff durante recuperação;
+- retomada após crash.
+
+scripts/test-message-inbox-sqlite.js
+- uma linha por mensagem;
+- payload criptografado;
+- texto não aparece em claro;
+- leitura após reinício.
+
+13. FORA DO ESCOPO
+
+- ConnectionSupervisor;
+- timeout finito de SYNCING;
+- health real da conexão;
+- cursor completo por conversa;
+- painel visual de dead-letter;
+- botão de reprocessamento administrativo;
+- integração com PersonalizeNF;
+- deploy na VPS.
