@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/export-etapa5-zip-20260804
+  pull_request:
 
 permissions:
   contents: read
