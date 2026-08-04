@@ -35,7 +35,7 @@
     "test:lead-panel": "node scripts/test-lead-panel-api.js",
     "test:exclusive-labels": "node scripts/test-exclusive-service-labels.js",
     "test:service-label-once": "node scripts/test-service-label-once.js",
-    "test:seller-label-migration": "node scripts/test-seller-label-migration.js --apply --confirm=MIGRAR_ETIQUETAS_VENDEDORES",
+    "test:seller-label-migration": "node scripts/test-seller-label-migration.js",
     "test:reset-handoff": "node scripts/test-reset-command-handoff.js",
     "test:reset-service": "node scripts/test-reset-service.js",
     "test:reset-entrypoint": "node scripts/test-reset-service-preload.js",
