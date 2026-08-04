@@ -1,6 +1,7 @@
 'use strict';
 
 const WppClient = require('../services/wppconnectClient');
+const Inbox = require('../services/messageInboxStore');
 const { BufferManager } = require('./bufferManager');
 const {
   RESET_MODE,
@@ -69,6 +70,10 @@ function installResetService() {
         actor: payload.source || 'test_admin',
         messageId: payloadMessageId(payload),
         clearBuffer: (chatId) => BufferManager.clearAllFor(chatId),
+      });
+
+      Inbox.markResetForConversation(clientId, result.candidates || [], {
+        reason: 'resetarsys_authorized',
       });
 
       await channelRef?.sendText?.(
