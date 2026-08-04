@@ -1,0 +1,31 @@
+name: Export Etapa 5 Source
+
+on:
+  push:
+    branches:
+      - agent/export-etapa5-zip-20260804
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    name: Exportar árvore do commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Remover metadados Git
+        run: rm -rf .git
+
+      - name: Empacotar código-fonte
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalizeProd-Etapa5-source
+          path: .
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
