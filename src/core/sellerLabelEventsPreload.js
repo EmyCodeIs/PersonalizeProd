@@ -1,6 +1,7 @@
 'use strict';
 
 const WppClient = require('../services/wppconnectClient');
+const { BufferManager } = require('./bufferManager');
 const { createSellerLabelUpdateHandler } = require('./sellerLabelEvents');
 
 function installSellerLabelEvents() {
@@ -17,7 +18,7 @@ function installSellerLabelEvents() {
 
     const handler = createSellerLabelUpdateHandler({
       getChannel: () => channel,
-      clearBuffer: (clientId) => channel?.__clearConversationBuffer?.(clientId),
+      clearBuffer: (clientId) => BufferManager.clearAllFor(clientId),
       delayMs: 500,
     });
     client.onUpdateLabel(async (data) => {
