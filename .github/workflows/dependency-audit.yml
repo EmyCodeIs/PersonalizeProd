@@ -63,6 +63,57 @@ jobs:
           console.log('AUDIT_SUMMARY_END');
           NODE
 
+      - name: Mapear árvore vulnerável
+        shell: bash
+        run: |
+          echo 'DEPENDENCY_TREE_BEGIN'
+          npm ls @wppconnect-team/wppconnect brace-expansion file-type got ip-address latest-version package-json sharp --all || true
+          echo 'DEPENDENCY_TREE_END'
+
+          echo 'NPM_VERSIONS_BEGIN'
+          node <<'NODE'
+          const { execFileSync } = require('child_process');
+          const packages = [
+            '@wppconnect-team/wppconnect',
+            'brace-expansion',
+            'file-type',
+            'got',
+            'ip-address',
+            'latest-version',
+            'package-json',
+            'sharp',
+          ];
+          for (const name of packages) {
+            try {
+              const version = execFileSync('npm', ['view', name, 'version', '--json'], { encoding: 'utf8' }).trim();
+              console.log(`${name} latest=${version}`);
+            } catch (error) {
+              console.log(`${name} latest=ERRO`);
+            }
+          }
+          try {
+            const current = execFileSync(
+              'npm',
+              ['view', '@wppconnect-team/wppconnect@2.2.1', 'dependencies', '--json'],
+              { encoding: 'utf8' },
+            ).trim();
+            console.log('WPP_2_2_1_DEPENDENCIES=' + current);
+          } catch (error) {
+            console.log('WPP_2_2_1_DEPENDENCIES=ERRO');
+          }
+          try {
+            const latest = execFileSync(
+              'npm',
+              ['view', '@wppconnect-team/wppconnect@latest', 'dependencies', '--json'],
+              { encoding: 'utf8' },
+            ).trim();
+            console.log('WPP_LATEST_DEPENDENCIES=' + latest);
+          } catch (error) {
+            console.log('WPP_LATEST_DEPENDENCIES=ERRO');
+          }
+          NODE
+          echo 'NPM_VERSIONS_END'
+
       - name: Simular correção automática
         shell: bash
         run: |
