@@ -64,6 +64,10 @@ require('./core/bufferStagePolicyPreload');
 require('./core/vpsReadinessPreload');
 require('./core/sellerLabelEventsPreload');
 
+// Precisa ser o último preload funcional: captura a versão final do fluxo,
+// do buffer e do canal para persistir recebimento, leases, retries e deduplicação.
+require('./core/messageInboxPreload');
+
 const TokenCache = require('./core/tokenCacheMaintenance');
 const BrowserCache = require('./core/browserCacheMaintenance');
 const Persistence = require('./services/persistence');
@@ -78,5 +82,5 @@ startQrAdminServer();
 const storage = Persistence.storageInfo();
 if (storage.driver === 'sqlite') Persistence.getDatabase();
 console.log(`[BANCO] driver=${storage.driver} | criptografado=${storage.encrypted ? 'sim' : 'não'}`);
-console.log('[BUILD] personalize-vps-secure-sqlite-v1');
+console.log('[BUILD] personalize-vps-secure-sqlite-inbox-v2');
 require('./bootstrap');
