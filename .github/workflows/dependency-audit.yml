@@ -15,7 +15,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -92,16 +92,6 @@ jobs:
             }
           }
           try {
-            const current = execFileSync(
-              'npm',
-              ['view', '@wppconnect-team/wppconnect@2.2.1', 'dependencies', '--json'],
-              { encoding: 'utf8' },
-            ).trim();
-            console.log('WPP_2_2_1_DEPENDENCIES=' + current);
-          } catch (error) {
-            console.log('WPP_2_2_1_DEPENDENCIES=ERRO');
-          }
-          try {
             const latest = execFileSync(
               'npm',
               ['view', '@wppconnect-team/wppconnect@latest', 'dependencies', '--json'],
@@ -114,7 +104,52 @@ jobs:
           NODE
           echo 'NPM_VERSIONS_END'
 
-      - name: Simular correção automática
+      - name: Testar overrides conservadores
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          pkg.overrides = {
+            ...(pkg.overrides || {}),
+            'brace-expansion': '1.1.18',
+            'ip-address': '10.4.0',
+            '@wppconnect-team/wppconnect': {
+              ...((pkg.overrides || {})['@wppconnect-team/wppconnect'] || {}),
+              sharp: '0.35.3',
+            },
+          };
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          NODE
+
+          npm install --package-lock-only --ignore-scripts
+          npm ci
+
+          echo 'OVERRIDE_TREE_BEGIN'
+          npm ls brace-expansion ip-address sharp @wppconnect-team/wppconnect --all || true
+          echo 'OVERRIDE_TREE_END'
+
+          npm audit --json > audit-after.json || true
+          node <<'NODE'
+          const fs = require('fs');
+          const audit = JSON.parse(fs.readFileSync('audit-after.json', 'utf8'));
+          console.log('AUDIT_AFTER_OVERRIDES_BEGIN');
+          console.log(JSON.stringify({
+            metadata: audit.metadata,
+            packages: Object.fromEntries(
+              Object.entries(audit.vulnerabilities || {}).map(([name, item]) => [name, {
+                severity: item.severity,
+                range: item.range,
+                fixAvailable: item.fixAvailable,
+              }]),
+            ),
+          }, null, 2));
+          console.log('AUDIT_AFTER_OVERRIDES_END');
+          NODE
+
+          npm test
+
+      - name: Simular correção automática restante
         shell: bash
         run: |
           npm audit fix --package-lock-only --dry-run --json > audit-fix.json || true
