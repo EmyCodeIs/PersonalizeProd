@@ -1,0 +1,84 @@
+name: PersonalizeProd Dependency Audit
+
+on:
+  push:
+    branches:
+      - main
+      - 'agent/**'
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/dependency-audit.yml
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/dependency-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci --ignore-scripts
+
+      - name: Verificar versões protegidas
+        run: |
+          npm ls brace-expansion ip-address --all
+          node <<'NODE'
+          const assert = require('assert/strict');
+          const brace = require('brace-expansion/package.json').version;
+          const ipAddress = require('ip-address/package.json').version;
+          assert.equal(brace, '1.1.18');
+          assert.equal(ipAddress, '10.4.0');
+          console.log(`✅ Overrides confirmados: brace-expansion=${brace} | ip-address=${ipAddress}`);
+          NODE
+
+      - name: Bloquear novas vulnerabilidades
+        shell: bash
+        run: |
+          npm audit --json > audit.json || true
+          node <<'NODE'
+          const fs = require('fs');
+          const audit = JSON.parse(fs.readFileSync('audit.json', 'utf8'));
+          const counts = audit.metadata?.vulnerabilities || {};
+          const actual = Object.keys(audit.vulnerabilities || {}).sort();
+          const accepted = new Set([
+            '@wppconnect-team/wppconnect',
+            'file-type',
+            'got',
+            'latest-version',
+            'package-json',
+            'sharp',
+          ]);
+          const unexpected = actual.filter((name) => !accepted.has(name));
+
+          console.log('Vulnerabilidades atuais:', JSON.stringify(counts));
+          console.log('Pacotes ainda pendentes do upstream:', actual.join(', ') || 'nenhum');
+
+          if ((counts.critical || 0) > 0) {
+            throw new Error('Foi encontrada vulnerabilidade crítica.');
+          }
+          if ((counts.high || 0) > 2 || (counts.moderate || 0) > 4) {
+            throw new Error('A quantidade de vulnerabilidades aumentou acima da dívida conhecida.');
+          }
+          if (unexpected.length) {
+            throw new Error(`Novas dependências vulneráveis: ${unexpected.join(', ')}`);
+          }
+
+          console.log('✅ Auditoria dentro do limite controlado: 0 críticas, até 2 altas e até 4 moderadas conhecidas.');
+          NODE

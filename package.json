@@ -66,6 +66,10 @@
     "sharp": "^0.35.3",
     "ws": "^8.18.0"
   },
+  "overrides": {
+    "brace-expansion": "1.1.18",
+    "ip-address": "10.4.0"
+  },
   "engines": {
     "node": ">=22 <25"
   }

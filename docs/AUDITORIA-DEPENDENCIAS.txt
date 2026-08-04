@@ -1,0 +1,159 @@
+AUDITORIA DE DEPENDÊNCIAS — PERSONALIZEPROD
+Data: 04/08/2026
+
+BASE ANALISADA
+agent/etapa-3-connection-supervisor
+
+BRANCH
+agent/auditoria-dependencias
+
+RESULTADO INICIAL
+- 8 vulnerabilidades no npm audit.
+- 4 moderadas.
+- 4 altas.
+- 0 críticas.
+
+CORREÇÕES SEGURAS APLICADAS
+
+1. brace-expansion
+- Versão anterior: 1.1.16.
+- Versão corrigida: 1.1.18.
+- Origem: rimraf → glob → minimatch → brace-expansion.
+- Risco corrigido: expansão sem limite capaz de causar negação de serviço por consumo de memória.
+- Forma da correção: npm override mantendo a mesma linha principal da dependência.
+
+2. ip-address
+- Versão anterior: 10.2.0.
+- Versão corrigida: 10.4.0.
+- Origem: Puppeteer → proxy-agent → socks-proxy-agent → socks → ip-address.
+- Risco corrigido: interpretações ambíguas de endereços capazes de contornar verificações de SSRF e limites de confiança.
+- Forma da correção: npm override mantendo a versão principal 10.
+
+RESULTADO APÓS AS CORREÇÕES
+- 6 vulnerabilidades conhecidas.
+- 4 moderadas.
+- 2 altas.
+- 0 críticas.
+- Toda a suíte automatizada aprovada.
+
+VULNERABILIDADES AINDA PENDENTES
+
+1. @wppconnect-team/wppconnect
+- Severidade agregada: alta.
+- É reportada porque depende de file-type, latest-version e sharp vulneráveis.
+- O npm informa que não existe correção automática disponível.
+
+2. sharp 0.34.5 interno do WPPConnect
+- Severidade: alta.
+- O projeto já utiliza sharp 0.35.3 diretamente.
+- O WPPConnect fixa exatamente sharp 0.34.5 dentro do próprio pacote.
+- Um override foi testado, mas o npm manteve a instalação interna como inválida, sem substituir corretamente o pacote.
+- Não foi forçada a troca para evitar quebrar processamento de QR, imagens ou mídias.
+
+3. file-type 16.5.4
+- Severidade: moderada.
+- Risco: loop infinito ao analisar arquivo ASF malformado.
+- Correção upstream exige versão 21.3.1 ou superior.
+- O WPPConnect fixa a linha 16.5.x.
+- A atualização exigiria salto grande de API e possível migração de CommonJS para ESM.
+
+4. latest-version 5.1.0
+- Severidade: moderada.
+- A vulnerabilidade é herdada de package-json.
+- A versão atual segura disponível está várias versões principais à frente.
+- O WPPConnect continua declarando latest-version 5.1.x até em sua versão mais recente.
+
+5. package-json 6.5.0
+- Severidade: moderada.
+- A vulnerabilidade é herdada de got 9.6.0.
+- A correção exige atualização principal incompatível com a árvore atual.
+
+6. got 9.6.0
+- Severidade: moderada.
+- Risco: redirecionamento para socket UNIX.
+- A correção disponível exige got 11.8.5 ou superior.
+- package-json 6.5.0 depende da API antiga do got 9.
+
+POR QUE O WPPConnect NÃO FOI APENAS ATUALIZADO
+
+A versão instalada resolvida pelo lock era 2.2.3.
+A versão mais recente consultada era 2.2.6.
+
+Mesmo a versão 2.2.6 ainda declara:
+- file-type ~16.5.4;
+- latest-version ^5.1.0;
+- sharp 0.34.5.
+
+Portanto, atualizar apenas o WPPConnect não elimina as seis vulnerabilidades restantes.
+
+PROTEÇÃO ADICIONADA À CI
+
+Novo workflow:
+.github/workflows/dependency-audit.yml
+
+A CI agora falha quando ocorrer qualquer um destes casos:
+- surgir vulnerabilidade crítica;
+- ultrapassar 2 vulnerabilidades altas;
+- ultrapassar 4 vulnerabilidades moderadas;
+- aparecer um pacote vulnerável fora da lista conhecida;
+- brace-expansion deixar de estar em 1.1.18;
+- ip-address deixar de estar em 10.4.0.
+
+A lista temporariamente aceita contém somente:
+- @wppconnect-team/wppconnect;
+- file-type;
+- got;
+- latest-version;
+- package-json;
+- sharp.
+
+Isso impede que a dívida atual esconda uma vulnerabilidade nova.
+
+VALIDAÇÃO REALIZADA
+
+Foram executados:
+- npm install --package-lock-only;
+- npm ci;
+- npm audit;
+- npm ls das dependências corrigidas;
+- npm test completo.
+
+A suíte validou:
+- sintaxe;
+- configuração comercial;
+- fluxo;
+- letreiro;
+- conexão;
+- Inbox;
+- handoff;
+- etiquetas;
+- reset;
+- catálogo;
+- armazenamento;
+- ambiente da VPS.
+
+DECISÃO TÉCNICA
+
+Pode ser aplicado agora:
+- brace-expansion 1.1.18;
+- ip-address 10.4.0;
+- proteção contínua na CI.
+
+Não deve ser forçado agora:
+- sharp 0.35.3 dentro do WPPConnect;
+- file-type 21/22;
+- latest-version 9;
+- package-json 10;
+- got 11/15.
+
+Essas atualizações precisam de uma destas soluções futuras:
+- correção oficial publicada pelo WPPConnect;
+- fork controlado do WPPConnect com testes reais de QR, conexão, envio de imagem e mídia;
+- patch mantido internamente sobre o pacote;
+- substituição futura da integração por uma biblioteca com árvore atualizada.
+
+IMPACTO NA PRODUÇÃO
+
+Nenhuma mudança foi aplicada à main ou à VPS.
+As correções estão isoladas em branch e pull request.
+Não houve alteração no fluxo comercial nem na autenticação do WhatsApp.
