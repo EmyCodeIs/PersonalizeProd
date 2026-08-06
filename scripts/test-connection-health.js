@@ -11,12 +11,22 @@ const {
 } = require('../src/services/connectionSupervisor');
 const {
   detailAuthorized,
+  createRequestHandler,
   detailPayload,
   readinessPayload,
   setQrAdminClient,
 } = require('../src/services/qrAdminServer');
 
-function run() {
+function fakeResponse() {
+  return {
+    statusCode: null,
+    body: '',
+    writeHead(code) { this.statusCode = code; },
+    end(body) { this.body = String(body || ''); },
+  };
+}
+
+async function run() {
   const supervisor = new ConnectionSupervisor({
     config: {
       syncTimeoutMs: 60000,
@@ -52,7 +62,7 @@ function run() {
   };
   setQrAdminClient(fakeClient);
   supervisor.attachClient(fakeClient, supervisor.generation);
-  supervisor.observeState('CONNECTED', { source: 'test' });
+  supervisor.observeState('INCHAT', { source: 'test' });
   supervisor.markInbound();
   supervisor.markOutbound();
 
@@ -70,6 +80,15 @@ function run() {
   assert.equal(unauthorized, false);
   assert.equal(authorized, true);
 
+  const logoutResponse = fakeResponse();
+  await createRequestHandler()({
+    method: 'POST',
+    url: '/logout',
+    headers: { host: 'localhost' },
+    socket: {},
+  }, logoutResponse);
+  assert.equal(logoutResponse.statusCode, 401);
+
   const detail = detailPayload();
   assert.equal(detail.live, true);
   assert.equal(detail.ready, true);
@@ -82,9 +101,7 @@ function run() {
   console.log('✅ Health real: live, ready, detail protegido e atividade da conexão verificados.');
 }
 
-try {
-  run();
-} catch (error) {
+run().catch((error) => {
   console.error('❌ Teste do health da conexão falhou:', error?.stack || error?.message || error);
   process.exitCode = 1;
-}
+});

@@ -10,6 +10,7 @@ const {
   isClientReady,
   normalizeRawState,
   setActiveConnectionSupervisor,
+  withTimeout,
 } = require('../services/connectionSupervisor');
 
 let pendingSupervisor = null;
@@ -95,12 +96,17 @@ function patchWppConnectCreate() {
     };
 
     console.log(
-      `[CONEXÃO] WPPConnect create | deviceSyncTimeout=${resolvedOptions.deviceSyncTimeout}ms `
+      `[CONEXÃO] WPPConnect create | createTimeout=${connectionConfig.createTimeoutMs}ms `
+      + `| deviceSyncTimeout=${resolvedOptions.deviceSyncTimeout}ms `
       + `| autoClose=${resolvedOptions.autoClose}`,
     );
 
     try {
-      const client = await originalCreate(resolvedOptions);
+      const client = await withTimeout(
+        originalCreate(resolvedOptions),
+        connectionConfig.createTimeoutMs,
+        'WPP_CREATE_TIMEOUT',
+      );
       supervisor?.attachClient(client, generation);
       return client;
     } catch (error) {

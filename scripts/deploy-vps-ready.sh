@@ -28,6 +28,9 @@ if [[ -d tokens || -f data/personalize.sqlite || -f data/sessions.json ]]; then
 fi
 
 sudo bash scripts/install-session-access-ubuntu.sh
+export PUPPETEER_SKIP_DOWNLOAD=true
+export PUPPETEER_CHROME_SKIP_DOWNLOAD=true
+export PUPPETEER_CHROME_HEADLESS_SHELL_SKIP_DOWNLOAD=true
 npm ci
 npm run storage:init
 npm run storage:seal-legacy

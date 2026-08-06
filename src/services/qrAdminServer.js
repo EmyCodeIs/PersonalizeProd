@@ -186,8 +186,15 @@ function createRequestHandler() {
     }
 
     if (request.method === 'POST' && url.pathname === '/logout') {
+      if (!detailAuthorized(request)) {
+        sendJson(response, 401, { ok: false, error: 'unauthorized' });
+        return;
+      }
       try {
         await readBody(request);
+        console.warn(
+          `[QR ADMIN] logout administrativo solicitado | origem=${request.socket?.remoteAddress || 'desconhecida'}`,
+        );
         if (!clientRef || typeof clientRef.logout !== 'function') {
           sendJson(response, 503, { ok: false, error: 'client_unavailable' });
           return;

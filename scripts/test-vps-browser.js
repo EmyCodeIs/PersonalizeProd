@@ -8,6 +8,7 @@ process.env.MOCK_MODE = 'true';
 const {
   parseExtraArgs,
   resolveBrowserArgs,
+  resolveBrowserExecutable,
 } = require('../src/core/vpsBrowserPreload');
 
 assert.deepEqual(
@@ -15,7 +16,12 @@ assert.deepEqual(
   ['--disable-gpu', '--window-size=1366,768', '--lang=pt-BR'],
 );
 
-const cwd = path.resolve('/tmp/personalize-browser-test');
+const fs = require('fs');
+const os = require('os');
+const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'personalize-browser-test-'));
+const fakeChrome = path.join(cwd, 'chrome.exe');
+fs.writeFileSync(fakeChrome, 'fake');
+assert.equal(resolveBrowserExecutable({ platform: 'win32', configured: fakeChrome }), fakeChrome);
 const common = [
   `--disk-cache-dir=${path.resolve(cwd, 'data/browser-cache')}`,
   '--disk-cache-size=104857600',
@@ -49,4 +55,5 @@ assert.equal(custom.includes('--lang=pt-BR'), true);
 assert.equal(custom.includes('--disable-dev-shm-usage'), true);
 assert.equal(custom.includes('--no-sandbox'), true);
 
-console.log('✅ Chrome verificado: cache fora de tokens, limites de tamanho e execução Linux/root.');
+fs.rmSync(cwd, { recursive: true, force: true });
+console.log('✅ Chrome verificado: executável do sistema, cache fora de tokens e execução Linux/root.');

@@ -90,6 +90,8 @@ const env = {
   sessionName: process.env.WPP_SESSION_NAME || 'personalize-wppconnect',
   mockMode: bool('MOCK_MODE', false),
   wppHeadless: bool('WPP_HEADLESS', false),
+  wppExecutablePath: String(process.env.WPP_EXECUTABLE_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || '').trim(),
+  wppRequireSystemBrowser: bool('WPP_REQUIRE_SYSTEM_BROWSER', true),
   enableTestCommands: bool('ENABLE_TEST_COMMANDS', false),
   businessName: process.env.BUSINESS_NAME || 'Personalize',
   sellerName: process.env.SELLER_NAME || 'Vendedor Personalize',

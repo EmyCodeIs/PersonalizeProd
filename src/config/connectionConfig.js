@@ -14,6 +14,7 @@ function num(name, fallback, minimum = 0) {
 
 const connectionConfig = Object.freeze({
   enabled: bool('CONNECTION_SUPERVISOR_ENABLED', true),
+  createTimeoutMs: num('WPP_CREATE_TIMEOUT_MS', 120000, 30000),
   deviceSyncTimeoutMs: num('WPP_DEVICE_SYNC_TIMEOUT_MS', 180000, 30000),
   syncTimeoutMs: num('CONNECTION_SYNC_TIMEOUT_MS', 195000, 30000),
   probeTimeoutMs: num('CONNECTION_PROBE_TIMEOUT_MS', 10000, 1000),

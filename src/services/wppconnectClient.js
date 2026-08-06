@@ -4,7 +4,7 @@ const path = require('path');
 const { env } = require('../config/env');
 const { applyNamedLabel } = require('../core/serviceLabels');
 const { OutboundTracker } = require('../core/outboundTracker');
-const { resolveBrowserArgs } = require('../core/vpsBrowserPreload');
+const { resolveBrowserArgs, resolveBrowserExecutable } = require('../core/vpsBrowserPreload');
 const { publishConnected, publishQrCode, publishState } = require('./qrAccess');
 const { setQrAdminClient } = require('./qrAdminServer');
 
@@ -218,7 +218,14 @@ async function collectUnreadMessages(client) {
 async function createWppChannel({ onMessage, onOutgoingMessage, onQr } = {}) {
   const wppconnect = require('@wppconnect-team/wppconnect');
   const browserArgs = resolveBrowserArgs();
+  const browserExecutable = resolveBrowserExecutable({ configured: env.wppExecutablePath });
+  if (env.wppRequireSystemBrowser && !browserExecutable) {
+    const error = new Error('Google Chrome/Chromium do sistema não foi encontrado.');
+    error.code = 'WPP_SYSTEM_BROWSER_NOT_FOUND';
+    throw error;
+  }
   console.log(`[WPPConnect] Chrome visível: ${env.wppHeadless ? 'não (headless)' : 'sim'}`);
+  if (browserExecutable) console.log(`[VPS-CHROME] executável: ${browserExecutable}`);
   if (browserArgs.length) {
     console.log(`[VPS-CHROME] argumentos aplicados: ${browserArgs.join(' ')}`);
   }
@@ -238,6 +245,7 @@ async function createWppChannel({ onMessage, onOutgoingMessage, onQr } = {}) {
     headless: env.wppHeadless,
     useChrome: true,
     browserArgs,
+    puppeteerOptions: browserExecutable ? { executablePath: browserExecutable } : undefined,
     // Keep the shared Chrome open indefinitely on the VPS so the remote view
     // always shows the same WhatsApp Web session until the user scans the QR.
     autoClose: 0,
@@ -339,8 +347,8 @@ async function createWppChannel({ onMessage, onOutgoingMessage, onQr } = {}) {
 
   client.onStateChange((state) => {
     console.log('[WPPConnect] estado:', state);
-    const normalized = String(state || '').trim().toUpperCase();
-    if (normalized.includes('CONNECTED') || normalized.includes('SYNCING') || normalized.includes('RESUMING')) {
+    const normalized = String(state || '').trim().replace(/[\s-]+/g, '_').toUpperCase();
+    if (normalized === 'CONNECTED' || normalized === 'INCHAT') {
       publishConnected(normalized);
       return;
     }
