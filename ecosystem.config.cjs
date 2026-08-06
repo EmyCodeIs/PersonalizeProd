@@ -7,8 +7,8 @@ const common = {
   cwd: __dirname,
   interpreter: '/bin/bash',
   autorestart: true,
-  restart_delay: 5000,
-  min_uptime: '30s',
+  restart_delay: 0,
+  min_uptime: '60s',
   kill_timeout: 15000,
   time: true,
   env: {
@@ -29,7 +29,8 @@ module.exports = {
       ...common,
       name: 'personalize-wppconnect',
       script: 'scripts/start-vps-whatsapp.sh',
-      max_restarts: 10,
+      max_restarts: 30,
+      exp_backoff_restart_delay: 5000,
       max_memory_restart: process.env.PM2_MAX_MEMORY_RESTART || '1200M',
     },
     {

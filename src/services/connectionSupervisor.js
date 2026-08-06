@@ -14,7 +14,7 @@ const STATES = Object.freeze({
   FAILED: 'FAILED',
 });
 
-const READY_RAW_STATES = new Set(['CONNECTED']);
+const READY_RAW_STATES = new Set(['CONNECTED', 'INCHAT']);
 const SYNC_RAW_STATES = new Set(['SYNCING', 'RESUMING']);
 const QR_RAW_STATES = new Set([
   'PAIRING',
@@ -24,6 +24,10 @@ const QR_RAW_STATES = new Set([
   'UNPAIRED_IDLE',
   'NOTLOGGED',
   'NOT_LOGGED',
+  'QRREADERROR',
+  'QR_READ_ERROR',
+  'QRREADFAIL',
+  'QR_READ_FAIL',
 ]);
 const AUTH_RAW_STATES = new Set([
   'OPENING',
@@ -42,6 +46,10 @@ const DISCONNECTED_RAW_STATES = new Set([
   'PHONENOTCONNECTED',
   'BROWSER_CLOSE',
   'BROWSERCLOSE',
+  'SERVER_CLOSE',
+  'SERVERCLOSE',
+  'AUTO_CLOSE_CALLED',
+  'AUTOCLOSECALLED',
 ]);
 
 let activeSupervisor = null;
@@ -209,8 +217,19 @@ class ConnectionSupervisor extends EventEmitter {
     this.rawSource = source;
     this.updatedAt = nowIso();
 
-    if (READY_RAW_STATES.has(normalized)) {
+    if (normalized === 'INCHAT') {
       this.markReady({ source, rawState: normalized });
+      return { ignored: false, state: this.state };
+    }
+
+    if (normalized === 'CONNECTED') {
+      if (!this.client) {
+        this.transition(STATES.AUTHENTICATING, { reason: `${source}:${normalized}:awaiting_probe` });
+      } else {
+        void this.probe(`state_${source}`).catch((error) => {
+          this.logger.warn('[CONEXÃO] confirmação de READY falhou:', error?.message || error);
+        });
+      }
       return { ignored: false, state: this.state };
     }
 
@@ -363,8 +382,19 @@ class ConnectionSupervisor extends EventEmitter {
     this.lastProbe = result;
 
     if (READY_RAW_STATES.has(result.connectionState)) {
-      result.ready = true;
-      this.markReady({ source: `probe:${source}`, rawState: result.connectionState });
+      const readinessChecksKnown = result.isConnected !== null || result.isMainReady !== null;
+      const readinessDenied = result.isConnected === false || result.isMainReady === false;
+      const readinessConfirmed = result.connectionState === 'INCHAT'
+        || result.isMainReady === true
+        || result.isConnected === true
+        || !readinessChecksKnown;
+
+      if (!readinessDenied && readinessConfirmed) {
+        result.ready = true;
+        this.markReady({ source: `probe:${source}`, rawState: result.connectionState });
+      } else {
+        this.enterSyncing({ source: `probe:${source}`, rawState: 'SYNCING' });
+      }
     } else if (result.connectionState) {
       this.observeState(result.connectionState, { source: `probe:${source}`, generation });
     }
@@ -592,7 +622,11 @@ function getClientConnectionSupervisor(client) {
 
 function isClientReady(client) {
   const supervisor = getClientConnectionSupervisor(client) || activeSupervisor;
-  return supervisor ? supervisor.isReady() : true;
+  if (supervisor) return supervisor.isReady();
+  const enabled = !['0', 'false', 'no', 'nao', 'não', 'off'].includes(
+    String(process.env.CONNECTION_SUPERVISOR_ENABLED ?? 'true').trim().toLowerCase(),
+  );
+  return !enabled;
 }
 
 module.exports = {

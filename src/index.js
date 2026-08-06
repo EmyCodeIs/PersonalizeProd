@@ -728,6 +728,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('[PersonalizeWppConect] erro fatal:', err?.stack || err?.message || err);
-  process.exitCode = 1;
+  const { terminateFatal } = require('./core/runtimeShutdown');
+  void terminateFatal(err);
 });

@@ -66,7 +66,7 @@ async function testReadinessAndGeneration() {
   assert.equal(supervisor.isReady(), false);
 
   client1.emit('INCHAT');
-  assert.equal(supervisor.isReady(), false, 'INCHAT não pode substituir CONNECTED');
+  assert.equal(supervisor.isReady(), true, 'INCHAT confirma que o WhatsApp chegou ao chat');
 
   client1.emit('CONNECTED');
   assert.equal(supervisor.state, STATES.READY);
@@ -88,6 +88,17 @@ async function testReadinessAndGeneration() {
   await sleep(20);
   assert.equal(supervisor.state, STATES.WAITING_QR);
   assert.equal(supervisor.recoveryAttempts, 0, 'QR não pode disparar reinício automático');
+
+  const closeSupervisor = new ConnectionSupervisor({ config: baseConfig(), logger });
+  const closeGeneration = closeSupervisor.beginGeneration('close-states');
+  const closeClient = fakeClient('INCHAT');
+  closeSupervisor.attachClient(closeClient, closeGeneration);
+  closeClient.emit('INCHAT');
+  for (const raw of ['browserClose', 'serverClose', 'autoCloseCalled', 'disconnectedMobile', 'phoneNotConnected']) {
+    closeClient.emit(raw);
+    assert.equal(closeSupervisor.state, STATES.DISCONNECTED, `${raw} precisa tirar o bot de READY`);
+  }
+  closeSupervisor.dispose();
 
   supervisor.dispose();
 }

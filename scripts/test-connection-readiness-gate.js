@@ -76,7 +76,7 @@ async function run() {
   const blockedLookup = Inbox.listRecoverable({ staleMs: 0, limit: 10 });
   assert.equal(blockedLookup.length, 0, 'Inbox não pode recuperar enquanto SYNCING');
 
-  supervisor.observeState('CONNECTED', { source: 'test' });
+  supervisor.observeState('INCHAT', { source: 'test' });
   const readyLookup = Inbox.listRecoverable({ staleMs: 0, limit: 10 });
   assert.equal(readyLookup.length, 1, 'registro deve ser liberado quando a conexão fica READY');
   assert.equal(readyLookup[0].id, record.id);

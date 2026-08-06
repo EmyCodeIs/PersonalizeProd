@@ -79,10 +79,27 @@ for candidate in google-chrome-stable google-chrome chromium chromium-browser; d
 done
 
 if [[ -n "$BROWSER_BIN" ]]; then
-  ok "navegador encontrado: $BROWSER_BIN"
+  export PUPPETEER_EXECUTABLE_PATH="${PUPPETEER_EXECUTABLE_PATH:-$BROWSER_BIN}"
+  ok "navegador encontrado: $PUPPETEER_EXECUTABLE_PATH"
 else
   fail "Google Chrome/Chromium não encontrado"
 fi
+
+
+if [[ -f "$ROOT_DIR/.puppeteerrc.cjs" ]]; then
+  ok "Puppeteer configurado para usar navegador do sistema sem download próprio"
+else
+  fail ".puppeteerrc.cjs ausente; npm ci pode baixar navegadores duplicados"
+fi
+
+for flag in CONNECTION_SUPERVISOR_ENABLED MESSAGE_INBOX_ENABLED CONVERSATION_CURSOR_ENABLED OUTBOUND_LEDGER_ENABLED LEAD_PANEL_ENABLED; do
+  value="${!flag:-}"
+  if [[ -n "$value" ]]; then
+    ok "flag operacional explícita: $flag=$value"
+  else
+    fail "flag operacional ausente no .env: $flag"
+  fi
+done
 
 NODE_MAJOR="$(node -p "Number(process.versions.node.split('.')[0])" 2>/dev/null || echo 0)"
 if (( NODE_MAJOR >= 22 && NODE_MAJOR < 25 )); then
