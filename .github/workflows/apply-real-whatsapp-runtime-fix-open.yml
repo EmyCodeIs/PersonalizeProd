@@ -1,8 +1,8 @@
-name: Apply real WhatsApp runtime fix on reopen
+name: Apply real WhatsApp runtime fix on PR open
 
 on:
   pull_request:
-    types: [reopened]
+    types: [opened, reopened]
     branches:
       - agent/etapa-5-ledger-alertas-painel
 
