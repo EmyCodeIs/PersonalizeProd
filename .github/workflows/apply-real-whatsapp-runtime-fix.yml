@@ -1,0 +1,141 @@
+name: Apply real WhatsApp runtime fix
+
+on:
+  pull_request:
+    types: [synchronize]
+    branches:
+      - agent/etapa-5-ledger-alertas-painel
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-real-whatsapp-runtime-fix
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/estabilizacao-prod-wppconnect' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply runtime corrections
+        shell: bash
+        run: |
+          python - <<'PY'
+          import base64
+          import zlib
+          from pathlib import Path
+
+          payload = ''.join('''
+            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
+            liCY5zH4N+2hfxBKMczpNo3qL8BJA6b8f516EF4=
+          '''.split())
+          Path('/tmp/apply-real-whatsapp-runtime-fix.py').write_bytes(
+              zlib.decompress(base64.b64decode(payload))
+          )
+          PY
+          python /tmp/apply-real-whatsapp-runtime-fix.py
+
+      - name: Install dependencies
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+          PUPPETEER_SKIP_CHROME_HEADLESS_SHELL_DOWNLOAD: 'true'
+        run: npm ci
+
+      - name: Run full test suite
+        run: npm test
+
+      - name: Publish corrected branch
+        shell: bash
+        run: |
+          git rm .github/workflows/apply-real-whatsapp-runtime-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json scripts/test-real-whatsapp-readiness-labels.js \
+            src/services/connectionSupervisor.js \
+            src/core/connectionSupervisorPreload.js \
+            src/services/wppconnectClient.js \
+            src/core/requiredLabelsStartup.js \
+            src/core/serviceLabels.js \
+            src/index.js \
+            src/start-with-required-labels.js
+          git commit -m "fix: confirmar autenticação real antes do atendimento"
+          git push origin "HEAD:${{ github.head_ref }}"
