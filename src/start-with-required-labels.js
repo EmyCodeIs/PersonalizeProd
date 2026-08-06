@@ -2,6 +2,9 @@
 
 require('dotenv').config();
 require('./core/safeLoggingPreload');
+// Instala primeiro as correções observadas no teste real: autenticação estrita,
+// QR único, etiquetas CRM e sessão remota opcional no Windows.
+require('./core/realWhatsAppRuntimeFixPreload');
 // Precisa carregar antes de qualquer módulo que importe wppconnectClient:
 // aplica timeout finito, observa o client real e corrige a semântica READY.
 require('./core/connectionSupervisorPreload');
